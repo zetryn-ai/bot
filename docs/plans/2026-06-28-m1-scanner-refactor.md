@@ -32,7 +32,7 @@ suitable for a public template repository.
 | 2 | Scanner interface | (B) Pull-based — `def stream(...) -> AsyncIterator[TokenCandidate]`. Caller decides what to do with each candidate. Separate `TokenEnricher` Protocol for on-demand lookups |
 | 3 | File organization | (C) Hybrid — `enrichers/` subfolder for `TokenEnricher` impls; all other scanners flat at `scanners/` |
 | 4 | Language | (A1) All English — module/function docstrings, inline comments, commit messages. No Indonesian in committed code |
-| 5 | Style strictness | (B1) Production-grade strict — `ruff` select `["E","F","I","B","UP","SIM","TCH","RUF"]`, line 100, `from __future__ import annotations` everywhere, pre-commit hook |
+| 5 | Style strictness | (B1) Production-grade strict — `ruff` select `["E","F","I","B","UP","SIM","RUF"]`, line 100, `from __future__ import annotations` everywhere, pre-commit hook. **TCH dropped during execution** — see §5.1 for the rationale and the actual config that shipped |
 | 6 | Type hints | (C1) Best-effort — public functions typed; private functions encouraged; no `mypy --strict` in CI (overhead vs benefit) |
 
 Additional declared constraints:
@@ -179,27 +179,52 @@ async for candidate in dexscreener.stream(session):
 
 ## 4. File reorganization
 
-### 4.1 Target layout
+> **Mid-execution correction (recorded retroactively).** This section
+> originally listed 9 scanners + 2 enrichers based on the cdexio
+> filenames. When B3 began, reading the actual cdexio implementations
+> revealed that `jupiter.py`, `gmgn_openapi.py`, and `twitter.py` are
+> on-demand mint-lookup enrichers (signature `(mint, ...) → enriched
+> data`), not continuous Scanner streams. Forcing them into the Scanner
+> Protocol would have produced wrong code. They were moved to
+> `enrichers/` during B3 and the move was documented in the B3 commit
+> message. Final shipped layout is 6 scanners + 5 enrichers as recorded
+> below. The audit acknowledged that mid-execution categorization
+> changes should ideally be flagged for re-approval before code lands;
+> recorded here for future M-level discipline.
+
+### 4.1 Final layout (as shipped in v0.1.0)
 
 ```
 zetryn_bot/scanners/
 ├── __init__.py                # Re-exports Protocols; no orchestration
-├── protocol.py                # Scanner + TokenEnricher Protocols + shared types
-├── _common.py                 # Shared helpers (rate-limit decorator, retry wrapper, etc.)
-├── birdeye.py                 # Scanner (polling, requires BIRDEYE_API_KEYS)
-├── dexscreener.py             # Scanner (polling)
-├── geckoterminal.py           # Scanner (polling)
-├── gmgn_openapi.py            # Scanner (polling, curl-cffi for TLS impersonation)
-├── jupiter.py                 # Scanner (polling, price/quote)
-├── pumpfun.py                 # Scanner (WebSocket streaming)
-├── raydium.py                 # Scanner (polling)
-├── telegram.py                # Scanner (social, telethon)
-├── twitter.py                 # Scanner (social, twitter_login + VADER)
+├── protocol.py                # Scanner + TokenEnricher Protocols
+├── _common.py                 # poll_loop() + fetch_json() helpers
+├── birdeye.py                 # Scanner (polling, requires BIRDEYE_API_KEYS).
+│                               # 2 classes: BirdeyeTrending, BirdeyeNewListing.
+├── dexscreener.py             # Scanner (polling, no auth).
+│                               # 3 classes: DexscreenerNewPairs,
+│                               # DexscreenerTrending, DexscreenerBoost.
+├── geckoterminal.py           # Scanner (polling, no auth).
+│                               # 2 classes: GeckoTerminalNewPools,
+│                               # GeckoTerminalTrending.
+├── pumpfun.py                 # Scanner (WebSocket streaming).
+│                               # 1 class: PumpfunStream.
+├── raydium.py                 # Scanner (polling, no auth).
+│                               # 1 class: RaydiumNewPools.
+├── telegram.py                # Scanner (social via telethon).
+│                               # 1 class: TelegramScanner (+ ChannelConfig).
 └── enrichers/                 # TokenEnricher impls (different Protocol)
     ├── __init__.py
-    ├── helius.py              # Holder distribution, on-chain enrichment
-    └── rugcheck.py            # Safety analysis enrichment
+    ├── helius.py              # HoldERS distribution + token metadata (Helius DAS)
+    ├── rugcheck.py            # Safety analysis (rugcheck.xyz)
+    ├── jupiter.py             # Price fallback (Jupiter lite-api)
+    ├── gmgn_openapi.py        # Entity-labeled smart-money + safety (GMGN)
+    └── twitter.py             # Social signals (twitter_login + VADER)
+                                # + TwitterAccountPool + build_*_from_config helpers
 ```
+
+Class count: **9 Scanner classes** (across 6 modules) + **5 enricher
+classes** (one per file).
 
 ### 4.2 What moves
 
@@ -207,12 +232,16 @@ zetryn_bot/scanners/
 |---|---|---|---|
 | `helius.py` | `scanners/` | `scanners/enrichers/` | Implements `TokenEnricher`, not `Scanner` |
 | `rugcheck.py` | `scanners/` | `scanners/enrichers/` | Implements `TokenEnricher`, not `Scanner` |
+| `jupiter.py` | `scanners/` | `scanners/enrichers/` | Mid-execution correction — actual signature is `enrich_price(token)`, not a stream |
+| `gmgn_openapi.py` | `scanners/` | `scanners/enrichers/` | Mid-execution correction — actual signatures are `fetch_gmgn_token_info(mint)` + `enrich_from_gmgn_info(token)`, on-demand pattern |
+| `twitter.py` | `scanners/` | `scanners/enrichers/` | Mid-execution correction — actual signature is `fetch_twitter_social(symbol, address)`, no continuous stream |
 | `protocol.py` | (new) | `scanners/` | Holds the two Protocol definitions |
-| `_common.py` | (new) | `scanners/` | Shared rate-limit / retry / source-name helpers |
+| `_common.py` | (new) | `scanners/` | Shared `poll_loop()` + `fetch_json()` helpers |
 
 ### 4.3 What changes inside each scanner file
 
-Each top-level scanner module gets normalized to this template:
+Each top-level scanner module gets normalized to this template (final
+label set used in v0.1.0):
 
 ```python
 """<Scanner name> — <one-line what it scans>.
@@ -221,7 +250,11 @@ Source: <URL or docs link>
 Auth: <env var name(s) or "none">
 Mechanism: <"REST polling every Ns" | "WebSocket stream" | "on-demand lookup">
 Rate limits: <known limits, e.g. "60 RPM per key">
-Output channel hint: <"sniper" | "momentum" | "migration"> (for downstream routing)
+Emits: <what the scanner yields — TokenCandidate, plus downstream channel
+        hints>.
+        — Used for Scanner files.
+Populates: <fields on TokenCandidate the enricher fills>.
+        — Used for TokenEnricher files.
 """
 
 from __future__ import annotations
@@ -268,7 +301,7 @@ Key shifts vs the cdexio originals:
 
 ## 5. Style + language config
 
-### 5.1 `pyproject.toml` additions
+### 5.1 `pyproject.toml` additions (as shipped in v0.1.0)
 
 ```toml
 [tool.ruff]
@@ -283,12 +316,17 @@ select = [
     "B",    # bugbear (mutable defaults, etc.)
     "UP",   # pyupgrade (modern syntax)
     "SIM",  # simplify (no-else-return, etc.)
-    "TCH",  # type-checking only imports
     "RUF",  # ruff-specific
 ]
+# TCH (type-checking-only imports) intentionally excluded: most scanner
+# modules import aiohttp / loguru / websockets / telethon at runtime
+# (async with, .bind, etc.), so the TCH001/002/003 rules misfire.
+# Reintroduce per-file via per-file ignores once we have a settled split
+# between type-only and runtime imports.
 ignore = [
-    "E501",  # line-too-long — formatter handles it
-    "B008",  # function call in default arg — pydantic Field uses this
+    "E501",   # line-too-long — formatter handles it
+    "B008",   # function call in default arg — pydantic Field uses this
+    "SIM105", # try-except-pass — fine for "best effort, no recovery" parsing
 ]
 
 [tool.ruff.lint.isort]
@@ -297,6 +335,19 @@ known-first-party = ["zetryn_bot"]
 [tool.ruff.format]
 quote-style = "double"
 ```
+
+**Deviation from the original brainstorming decision #5.** The original
+plan included `"TCH"` in `select` and did not include `SIM105` in
+`ignore`. During B4 execution, applying TCH produced 28 errors that all
+required `--unsafe-fixes` (judgment about which imports are
+type-only-vs-runtime). SIM105 produced 3 errors asking to rewrite the
+`try: float(x); except (TypeError, ValueError): pass` pattern with
+`contextlib.suppress`, which adds an import and a layer of indirection
+without changing semantics. Both decisions were made unilaterally during
+B4 and documented in the commit message; flagging here for visibility.
+A follow-up cleanup could re-enable TCH with per-file ignores for the
+runtime-import cases and convert the three SIM105 sites to
+`contextlib.suppress` — that would close the deviation.
 
 ### 5.2 Pre-commit hook (optional, recommended)
 

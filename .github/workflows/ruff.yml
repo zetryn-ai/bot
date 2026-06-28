@@ -1,0 +1,41 @@
+name: ruff + import smoke
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+
+jobs:
+  lint:
+    name: ruff (lint + format)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+      - name: Install ruff
+        run: pip install ruff==0.6.9
+      - name: ruff check
+        run: ruff check zetryn_bot/
+      - name: ruff format --check
+        run: ruff format --check zetryn_bot/
+
+  smoke:
+    name: import smoke test
+    runs-on: ubuntu-latest
+    needs: lint
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+      - name: Install package (with dev extras)
+        # nltk-vader is downloaded at first import of twitter.py; we
+        # warm the cache here so the smoke test doesn't hit a download.
+        run: |
+          pip install -e ".[dev]"
+          python -c "import nltk; nltk.download('vader_lexicon', quiet=True)"
+      - name: Offline smoke test
+        run: python scripts/m1_smoke.py
