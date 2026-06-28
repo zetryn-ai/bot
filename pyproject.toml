@@ -1,0 +1,88 @@
+[build-system]
+# Pin hatchling<1.27 — see zetryn-trading CHANGELOG v1.0.0 entry. The 1.27+
+# release emits Metadata-Version 2.4 with a PEP 639 'License-File:' field
+# that PyPI Warehouse still rejects as of mid-2026. Unpin once PyPI catches up.
+requires = ["hatchling<1.27"]
+build-backend = "hatchling.build"
+
+[project]
+name = "zetryn-bot"
+version = "0.0.0"
+description = "Solana memecoin scanner sources and bot scaffolding — the I/O companion to zetryn-trading. Phase 1 scaffolding (scanner sources only)."
+readme = "README.md"
+requires-python = ">=3.11"
+license = { text = "MIT" }
+authors = [
+    { name = "Zetryn AI", email = "team@zetryn.com" },
+]
+keywords = [
+    "ai-agent",
+    "bot",
+    "memecoin",
+    "scanner",
+    "solana",
+    "trading",
+    "zetryn",
+]
+classifiers = [
+    "Development Status :: 2 - Pre-Alpha",
+    "Intended Audience :: Developers",
+    "Intended Audience :: Financial and Insurance Industry",
+    "License :: OSI Approved :: MIT License",
+    "Operating System :: OS Independent",
+    "Programming Language :: Python :: 3",
+    "Programming Language :: Python :: 3.11",
+    "Programming Language :: Python :: 3.12",
+    "Programming Language :: Python :: 3.13",
+    "Topic :: Office/Business :: Financial :: Investment",
+    "Typing :: Typed",
+]
+dependencies = [
+    # Async & HTTP
+    "aiohttp>=3.10",
+    "asyncio-throttle>=1.0",
+    "websockets>=10.4",
+    "curl-cffi>=0.7",           # browser TLS impersonation for GMGN (bypass Cloudflare Bot Fight)
+    "httpx>=0.27",
+    "tenacity>=9.0",
+
+    # Data validation + config
+    "pydantic>=2.7",
+    "pydantic-settings>=2.5",
+
+    # Redis transport
+    "redis[hiredis]>=5.1",
+    "orjson>=3.10",
+
+    # Env loading
+    "python-dotenv>=1.0",
+
+    # Logging
+    "loguru>=0.7",
+
+    # Social-source scanners
+    "telethon>=1.40",                                           # Telegram channel scraper
+    "twitter_login @ git+https://github.com/d60/twitter_login.git",  # Twitter scraper (no pypi)
+    "nltk>=3.8",                                                # VADER sentiment for twitter scanner
+]
+
+[project.optional-dependencies]
+dev = [
+    "pytest>=8.0",
+    "pytest-asyncio>=0.23",
+    "ruff>=0.5",
+]
+
+[project.urls]
+Homepage = "https://zetryn.com"
+Repository = "https://github.com/zetryn-ai/bot"
+Issues = "https://github.com/zetryn-ai/bot/issues"
+"Framework (zetryn-trading)" = "https://github.com/zetryn-ai/ai-agent"
+
+[tool.hatch.build.targets.wheel]
+packages = ["zetryn_bot"]
+
+[tool.pytest.ini_options]
+asyncio_mode = "auto"
+testpaths = ["tests"]
+pythonpath = ["."]

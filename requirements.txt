@@ -1,0 +1,30 @@
+# Source-of-truth dependency declaration lives in `pyproject.toml`.
+# This file mirrors it for users who prefer `pip install -r requirements.txt`
+# over a PEP 621 install. Keep in sync with `[project.dependencies]`.
+
+# Async & HTTP
+aiohttp>=3.10
+asyncio-throttle>=1.0
+websockets>=10.4
+curl-cffi>=0.7         # browser TLS impersonation for GMGN (bypass Cloudflare)
+httpx>=0.27
+tenacity>=9.0
+
+# Data validation + config
+pydantic>=2.7
+pydantic-settings>=2.5
+
+# Redis transport
+redis[hiredis]>=5.1
+orjson>=3.10
+
+# Env loading
+python-dotenv>=1.0
+
+# Logging
+loguru>=0.7
+
+# Social-source scanners
+telethon>=1.40
+twitter_login @ git+https://github.com/d60/twitter_login.git
+nltk>=3.8
