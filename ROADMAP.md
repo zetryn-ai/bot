@@ -1,0 +1,77 @@
+# Roadmap
+
+The bot template ships in milestones (`M1`–`M9`). Each milestone has a
+design document at [`docs/plans/`](docs/plans/) and bumps the version
+appropriately on landing.
+
+> **Position relative to `zetryn-trading`:** the framework decides; this
+> bot executes. Roadmap below tracks the *executes* side — scanners,
+> orchestration, swap, wallet, persistence, deploy, dashboard. Decision
+> logic lives in [`zetryn-trading`](https://github.com/zetryn-ai/ai-agent),
+> not here.
+
+## Milestones
+
+| ID | Title | Status | Version | Design |
+|---|---|---|---|---|
+| **M1** | Scanner refactor & baseline | 🚧 in-progress | v0.1.0 (target) | [2026-06-28-m1-scanner-refactor.md](docs/plans/2026-06-28-m1-scanner-refactor.md) |
+| **M2** | Wire scanners to `zetryn-trading` | 📅 planned | v0.2.0 | TBD |
+| **M3** | Orchestration runtime (`main.py`) | 📅 planned | v0.3.0 | TBD |
+| **M4** | Execution layer (swap, position, reconciliation) | 📅 planned | v0.4.0 | TBD |
+| **M5** | Wallet management (encryption, monitor, sweeper) | 📅 planned | v0.5.0 | TBD |
+| **M6** | Persistence (PostgreSQL — DecisionLog, position state) | 📅 planned | v0.6.0 | TBD |
+| **M7** | Observability (Telegram/Discord notifier, heartbeat, crash dump) | 📅 planned | v0.7.0 | TBD |
+| **M8** | Deployment (Dockerfile, compose, systemd, deploy docs) | 📅 planned | v0.8.0 | TBD |
+| **M9** | API + Dashboard (FastAPI + Next.js) | 📅 planned | v0.9.0 (or v1.0.0 cut) | TBD |
+
+A `v1.0.0` stable release is cut once **M2** ships at minimum (the first
+end-to-end zetryn-trading-integrated bot). The exact cutoff between
+`v0.x` and `v1.0.0` is decided once we have real-source testing data —
+versioning before that follows additive minor bumps per milestone.
+
+## Versioning convention
+
+Mirrors `zetryn-trading`:
+
+| Change type | Version bump |
+|---|---|
+| Bug fix, no API change | `v1.0.X` (patch) |
+| Additive feature, no breaking change | `v1.X.0` (minor) |
+| Breaking change to public API | `vX.0.0` (major) |
+
+For pre-v1.0.0 milestones, breaking changes are allowed without a major
+bump — minor bumps signal substantial milestone landings.
+
+## Decision dependencies (high level)
+
+```
+M1 (refactor + Protocol)
+   │
+   └─→ M2 (wire to zetryn-trading)
+          │
+          └─→ M3 (orchestration runtime)
+                 │
+                 ├─→ M4 (execution)  ──┐
+                 ├─→ M6 (persistence) ─┼─→ M9 (API + Dashboard)
+                 └─→ M7 (observability)│
+                                       │
+                       M5 (wallet) ────┘
+                       (depends on M4)
+                       
+                                       M8 (deploy) — needs M4
+```
+
+M5 (wallet) only meaningful after M4 (execution) — wallet exists to sign
+transactions. M8 (deploy) needs M4 at minimum (something worth deploying).
+M9 (dashboard) needs M3 + M6 (something to display + state to query).
+
+## Design doc convention
+
+Every milestone gets one design document in
+[`docs/plans/YYYY-MM-DD-mN-<slug>.md`](docs/plans/) with a `**Status:**`
+header (`Draft` / `Approved` / `Shipped (vX.Y.Z)` / `Historical`).
+
+Index of plans lives in [`docs/plans/README.md`](docs/plans/README.md).
+
+For non-milestone changes (bug fixes, doc tweaks, dependency bumps), use
+the usual git history — no design doc needed.
