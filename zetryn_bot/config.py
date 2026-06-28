@@ -53,10 +53,10 @@ class Settings(BaseSettings):
     # ── Telegram scanner (telethon) ─────────────────────────────────────────
     telegram_api_id: int = 0
     telegram_api_hash: str = ""
-    telegram_session_path: str = "telegram_session"   # do NOT commit the .session file
+    telegram_session_path: str = "telegram_session"  # do NOT commit the .session file
 
     # ── Twitter scanner (twitter_login) ─────────────────────────────────────
-    twitter_cookies_path: str = "twitter_cookies"     # do NOT commit cookies dir
+    twitter_cookies_path: str = "twitter_cookies"  # do NOT commit cookies dir
 
     # ── Logging ─────────────────────────────────────────────────────────────
     log_level: str = "INFO"
@@ -65,5 +65,5 @@ class Settings(BaseSettings):
     # CSV → list normalisation for env vars passed as comma-separated strings
     @field_validator("helius_api_keys", "birdeye_api_keys", mode="before")
     @classmethod
-    def _csv_to_list(cls, v):  # noqa: D401 — pydantic validator
+    def _csv_to_list(cls, v):
         return _parse_csv(v)

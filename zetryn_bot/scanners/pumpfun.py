@@ -21,7 +21,7 @@ from __future__ import annotations
 import asyncio
 import json
 from collections.abc import AsyncIterator
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 
 import aiohttp
 import websockets
@@ -47,13 +47,9 @@ class PumpfunStream:
         self._reconnect_delay_s = reconnect_delay_s
         self._log = logger.bind(component=self.name)
 
-    async def stream(
-        self, session: aiohttp.ClientSession  # noqa: ARG002 — unused but required by Protocol
-    ) -> AsyncIterator[TokenCandidate]:
+    async def stream(self, session: aiohttp.ClientSession) -> AsyncIterator[TokenCandidate]:
         ws_url = (
-            f"{PUMPPORTAL_WS_BASE}?api-key={self._api_key}"
-            if self._api_key
-            else PUMPPORTAL_WS_BASE
+            f"{PUMPPORTAL_WS_BASE}?api-key={self._api_key}" if self._api_key else PUMPPORTAL_WS_BASE
         )
         masked = f"...{self._api_key[-6:]}" if self._api_key else "no key"
 
@@ -76,7 +72,7 @@ class PumpfunStream:
                             yield token
             except asyncio.CancelledError:
                 raise
-            except Exception as exc:  # noqa: BLE001 — reconnect on any failure
+            except Exception as exc:
                 self._log.warning(
                     f"disconnected: {exc} — reconnecting in {self._reconnect_delay_s}s"
                 )
@@ -100,20 +96,14 @@ def _parse_newtoken_event(data: dict) -> TokenCandidate | None:
         return None
 
     created_ts = data.get("created_timestamp")
-    created_at = (
-        datetime.fromtimestamp(created_ts / 1000, tz=timezone.utc)
-        if created_ts
-        else None
-    )
+    created_at = datetime.fromtimestamp(created_ts / 1000, tz=UTC) if created_ts else None
 
     # Bonding-curve signals: Pump.fun's virtual reserve is ~30 SOL; graduation
     # threshold is ~85 SOL total → 55 more "real" SOL needed.
     v_sol = float(data.get("vSolInBondingCurve") or 0)
     creator_sol = float(data.get("solAmount") or 0)
     real_sol_in_curve = max(0.0, v_sol - 30.0)
-    bonding_pct = (
-        min(100.0, real_sol_in_curve / 55.0 * 100) if v_sol > 0 else 0.0
-    )
+    bonding_pct = min(100.0, real_sol_in_curve / 55.0 * 100) if v_sol > 0 else 0.0
 
     mcap_sol = float(data.get("marketCapSol") or data.get("market_cap") or 0)
     mcap_usd = mcap_sol * _SOL_PRICE_USD if mcap_sol > 0 else 0.0
@@ -153,9 +143,7 @@ def _parse_migration_event(data: dict) -> TokenCandidate | None:
 
     # Use event-supplied SOL amount when present, else fall back to the
     # Pump.fun graduation threshold (~85 SOL) as a baseline.
-    sol_amount = float(
-        data.get("sol_amount", 0) or data.get("initialSol", 0) or 85
-    )
+    sol_amount = float(data.get("sol_amount", 0) or data.get("initialSol", 0) or 85)
     liquidity_usd = sol_amount * _SOL_PRICE_USD
 
     age_seconds = max(int(data.get("age_seconds", 0) or 0), 86400)

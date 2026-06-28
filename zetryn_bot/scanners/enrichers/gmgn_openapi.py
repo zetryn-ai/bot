@@ -39,9 +39,7 @@ from loguru import logger
 
 from zetryn_bot.models.token import TokenCandidate
 
-GMGN_OPENAPI_HOST = os.environ.get(
-    "GMGN_API_HOST", "https://openapi.gmgn.ai"
-).rstrip("/")
+GMGN_OPENAPI_HOST = os.environ.get("GMGN_API_HOST", "https://openapi.gmgn.ai").rstrip("/")
 _USER_AGENT = (
     "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 "
     "(KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36"
@@ -74,7 +72,7 @@ class GmgnEnricher:
         self,
         mint: str,
         candidate: TokenCandidate,
-        session: aiohttp.ClientSession,  # noqa: ARG002 — unused; see module docstring
+        session: aiohttp.ClientSession,
     ) -> TokenCandidate:
         if not self._api_key:
             return candidate
@@ -87,15 +85,11 @@ class GmgnEnricher:
         return _apply(candidate, info, security)
 
     async def _fetch_token_info(self, mint: str) -> dict | None:
-        data = await self._get(
-            "/v1/token/info", {"chain": "sol", "address": mint}
-        )
+        data = await self._get("/v1/token/info", {"chain": "sol", "address": mint})
         return data if isinstance(data, dict) else None
 
     async def _fetch_security(self, mint: str) -> dict | None:
-        data = await self._get(
-            "/v1/token/security", {"chain": "sol", "address": mint}
-        )
+        data = await self._get("/v1/token/security", {"chain": "sol", "address": mint})
         return data if isinstance(data, dict) else None
 
     async def _get(self, sub_path: str, query: dict) -> dict | list | None:
@@ -125,25 +119,18 @@ class GmgnEnricher:
                     _enter_cooldown(resp.headers.get("x-ratelimit-reset"))
                     return None
                 if resp.status_code != 200:
-                    self._log.debug(
-                        f"{sub_path} HTTP {resp.status_code}"
-                    )
+                    self._log.debug(f"{sub_path} HTTP {resp.status_code}")
                     return None
                 body = resp.json()
                 if body.get("code") != 0:
-                    self._log.debug(
-                        f"{sub_path} code={body.get('code')} "
-                        f"error={body.get('error')}"
-                    )
+                    self._log.debug(f"{sub_path} code={body.get('code')} error={body.get('error')}")
                     return None
                 data = body.get("data")
                 if data is not None:
                     _cache[key] = (time.time() + _CACHE_TTL_SEC, data)
                 return data
-        except Exception as exc:  # noqa: BLE001
-            self._log.debug(
-                f"{sub_path} error: {type(exc).__name__}: {exc}"
-            )
+        except Exception as exc:
+            self._log.debug(f"{sub_path} error: {type(exc).__name__}: {exc}")
             return None
 
 
@@ -169,9 +156,7 @@ def _enter_cooldown(reset_unix_str: str | None) -> None:
     was_active = _cooldown_until > time.monotonic()
     _cooldown_until = max(_cooldown_until, target)
     if not was_active:
-        logger.bind(component="gmgn").warning(
-            f"rate limited — backing off {delay:.1f}s"
-        )
+        logger.bind(component="gmgn").warning(f"rate limited — backing off {delay:.1f}s")
 
 
 # ──────────────────────────────────────────────────────────────────────────
@@ -179,9 +164,7 @@ def _enter_cooldown(reset_unix_str: str | None) -> None:
 # ──────────────────────────────────────────────────────────────────────────
 
 
-def _apply(
-    candidate: TokenCandidate, info: dict, security: dict | None
-) -> TokenCandidate:
+def _apply(candidate: TokenCandidate, info: dict, security: dict | None) -> TokenCandidate:
     """Return ``candidate`` with GMGN info + security fields applied."""
     updates: dict = {}
 
@@ -228,30 +211,26 @@ def _apply(
     top10_rate = _f(stat, "top_10_holder_rate")
     if top10_rate > 0 and candidate.top10_holder_pct == 0:
         updates["top10_holder_pct"] = top10_rate * 100
-    dev_rate = (
-        _f(stat, "dev_team_hold_rate") or _f(stat, "creator_hold_rate")
-    )
+    dev_rate = _f(stat, "dev_team_hold_rate") or _f(stat, "creator_hold_rate")
     if dev_rate > 0 and candidate.dev_wallet_pct == 0:
         updates["dev_wallet_pct"] = dev_rate * 100
 
     # Safety — prefer GMGN security; populate booleans + derived 0-100 score.
     if security:
-        is_honeypot = candidate.is_honeypot or bool(
-            security.get("honeypot")
-        ) or bool(security.get("is_honeypot"))
+        is_honeypot = (
+            candidate.is_honeypot
+            or bool(security.get("honeypot"))
+            or bool(security.get("is_honeypot"))
+        )
         if is_honeypot != candidate.is_honeypot:
             updates["is_honeypot"] = is_honeypot
 
         if security.get("renounced_mint") is not None:
-            mintable = candidate.is_mintable or (
-                not security.get("renounced_mint")
-            )
+            mintable = candidate.is_mintable or (not security.get("renounced_mint"))
             if mintable != candidate.is_mintable:
                 updates["is_mintable"] = mintable
         if security.get("renounced_freeze_account") is not None:
-            freezable = candidate.is_freezable or (
-                not security.get("renounced_freeze_account")
-            )
+            freezable = candidate.is_freezable or (not security.get("renounced_freeze_account"))
             if freezable != candidate.is_freezable:
                 updates["is_freezable"] = freezable
 

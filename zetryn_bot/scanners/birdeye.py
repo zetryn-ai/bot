@@ -23,7 +23,7 @@ from __future__ import annotations
 
 import asyncio
 from collections.abc import AsyncIterator
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 
 import aiohttp
 from loguru import logger
@@ -55,9 +55,7 @@ class BirdeyeTrending:
         self._min_liquidity = min_liquidity_usd
         self._limit = limit
 
-    async def stream(
-        self, session: aiohttp.ClientSession
-    ) -> AsyncIterator[TokenCandidate]:
+    async def stream(self, session: aiohttp.ClientSession) -> AsyncIterator[TokenCandidate]:
         url = f"{BIRDEYE_BASE}/defi/tokenlist"
 
         async def fetch() -> list[TokenCandidate]:
@@ -68,9 +66,7 @@ class BirdeyeTrending:
                 "limit": self._limit,
                 "min_liquidity": int(self._min_liquidity),
             }
-            data = await _request_birdeye(
-                session, url, params, self._key_pool, self.name
-            )
+            data = await _request_birdeye(session, url, params, self._key_pool, self.name)
             if not data:
                 return []
             tokens = (data.get("data") or {}).get("tokens") or []
@@ -94,9 +90,7 @@ class BirdeyeNewListing:
         self._poll_interval_s = poll_interval_s
         self._v2_available = True  # Optimistic; flipped to False on 400.
 
-    async def stream(
-        self, session: aiohttp.ClientSession
-    ) -> AsyncIterator[TokenCandidate]:
+    async def stream(self, session: aiohttp.ClientSession) -> AsyncIterator[TokenCandidate]:
         async def fetch() -> list[TokenCandidate]:
             if self._v2_available:
                 v2_result, status_400 = await self._fetch_v2(session)
@@ -109,9 +103,7 @@ class BirdeyeNewListing:
         async for candidate in poll_loop(self.name, self._poll_interval_s, fetch):
             yield candidate
 
-    async def _fetch_v2(
-        self, session: aiohttp.ClientSession
-    ) -> tuple[list[TokenCandidate], bool]:
+    async def _fetch_v2(self, session: aiohttp.ClientSession) -> tuple[list[TokenCandidate], bool]:
         """Returns ``(candidates, is_400_tier_restriction)``.
 
         When ``is_400_tier_restriction`` is True, the caller flips off v2
@@ -125,7 +117,9 @@ class BirdeyeNewListing:
             return [], False
         try:
             async with session.get(
-                url, headers=_headers(key), params=params,
+                url,
+                headers=_headers(key),
+                params=params,
                 timeout=aiohttp.ClientTimeout(total=15),
             ) as resp:
                 if resp.status == 429:
@@ -147,7 +141,7 @@ class BirdeyeNewListing:
                 data = await resp.json()
         except asyncio.CancelledError:
             raise
-        except Exception as exc:  # noqa: BLE001
+        except Exception as exc:
             log.warning(f"v2 error: {exc}")
             return [], False
 
@@ -157,9 +151,7 @@ class BirdeyeNewListing:
             False,
         )
 
-    async def _fetch_fallback(
-        self, session: aiohttp.ClientSession
-    ) -> list[TokenCandidate]:
+    async def _fetch_fallback(self, session: aiohttp.ClientSession) -> list[TokenCandidate]:
         """Fallback: tokenlist sorted by ``recentListingTime``."""
         url = f"{BIRDEYE_BASE}/defi/tokenlist"
         params = {
@@ -169,9 +161,7 @@ class BirdeyeNewListing:
             "limit": 20,
             "min_liquidity": 1000,
         }
-        data = await _request_birdeye(
-            session, url, params, self._key_pool, self.name + ".fallback"
-        )
+        data = await _request_birdeye(session, url, params, self._key_pool, self.name + ".fallback")
         if not data:
             return []
         items = (data.get("data") or {}).get("tokens") or []
@@ -217,7 +207,9 @@ async def _request_birdeye(
         return None
     try:
         async with session.get(
-            url, headers=_headers(key), params=params,
+            url,
+            headers=_headers(key),
+            params=params,
             timeout=aiohttp.ClientTimeout(total=15),
         ) as resp:
             if resp.status == 429:
@@ -238,7 +230,7 @@ async def _request_birdeye(
             return await resp.json()
     except asyncio.CancelledError:
         raise
-    except Exception as exc:  # noqa: BLE001
+    except Exception as exc:
         log.warning(f"request error: {exc}")
         return None
 
@@ -269,11 +261,7 @@ def _parse_new_listing_item(item: dict) -> TokenCandidate | None:
         return None
 
     source_raw = item.get("source", "")
-    source = (
-        "birdeye_new_pumpfun"
-        if source_raw in _PUMP_SOURCES
-        else "birdeye_new"
-    )
+    source = "birdeye_new_pumpfun" if source_raw in _PUMP_SOURCES else "birdeye_new"
 
     added_raw = item.get("liquidityAddedAt")
     created_at: datetime | None = None
@@ -282,10 +270,8 @@ def _parse_new_listing_item(item: dict) -> TokenCandidate | None:
         try:
             created_at = datetime.fromisoformat(added_raw)
             if created_at.tzinfo is None:
-                created_at = created_at.replace(tzinfo=timezone.utc)
-            age_seconds = int(
-                (datetime.now(tz=timezone.utc) - created_at).total_seconds()
-            )
+                created_at = created_at.replace(tzinfo=UTC)
+            age_seconds = int((datetime.now(tz=UTC) - created_at).total_seconds())
         except ValueError:
             pass
 

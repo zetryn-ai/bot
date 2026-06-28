@@ -18,7 +18,7 @@ during decision time).
 from __future__ import annotations
 
 from collections.abc import AsyncIterator
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 
 import aiohttp
 from loguru import logger
@@ -40,9 +40,7 @@ class RaydiumNewPools:
         self._poll_interval_s = poll_interval_s
         self._page_size = page_size
 
-    async def stream(
-        self, session: aiohttp.ClientSession
-    ) -> AsyncIterator[TokenCandidate]:
+    async def stream(self, session: aiohttp.ClientSession) -> AsyncIterator[TokenCandidate]:
         url = f"{RAYDIUM_API}/pools/info/list"
         params: dict[str, str | int] = {
             "poolType": "all",
@@ -68,9 +66,7 @@ class RaydiumNewPools:
             yield candidate
 
 
-async def fetch_pool_by_mint(
-    session: aiohttp.ClientSession, mint: str
-) -> dict | None:
+async def fetch_pool_by_mint(session: aiohttp.ClientSession, mint: str) -> dict | None:
     """Fetch the highest-liquidity Raydium pool for a given mint address."""
     log = logger.bind(component="raydium.fetch_pool")
     url = f"{RAYDIUM_API}/pools/info/mint"
@@ -81,15 +77,13 @@ async def fetch_pool_by_mint(
         "sortType": "desc",
     }
     try:
-        async with session.get(
-            url, params=params, timeout=aiohttp.ClientTimeout(total=10)
-        ) as resp:
+        async with session.get(url, params=params, timeout=aiohttp.ClientTimeout(total=10)) as resp:
             if resp.status != 200:
                 return None
             data = await resp.json()
             pools = data.get("data", {}).get("data", []) or []
             return pools[0] if pools else None
-    except Exception as exc:  # noqa: BLE001
+    except Exception as exc:
         log.debug(f"pool fetch error for {mint}: {exc}")
         return None
 
@@ -116,14 +110,14 @@ def _parse_raydium_pool(pool: dict) -> TokenCandidate | None:
     created_ts = pool.get("openTime")
     try:
         ts = int(created_ts) if created_ts else 0
-        created_at = datetime.fromtimestamp(ts, tz=timezone.utc) if ts > 0 else None
+        created_at = datetime.fromtimestamp(ts, tz=UTC) if ts > 0 else None
     except (ValueError, TypeError):
         created_at = None
     if created_at is None:
         # No timestamp = established pool with no creation record; skip.
         return None
 
-    age_seconds = int((datetime.now(timezone.utc) - created_at).total_seconds())
+    age_seconds = int((datetime.now(UTC) - created_at).total_seconds())
     if age_seconds > 86400:
         return None  # Older than 24h — not a new pool target.
 

@@ -48,13 +48,9 @@ class JupiterEnricher:
         sources = list(candidate.sources)
         if "jupiter" not in sources:
             sources.append("jupiter")
-        return candidate.model_copy(
-            update={"price_usd": price, "sources": sources}
-        )
+        return candidate.model_copy(update={"price_usd": price, "sources": sources})
 
-    async def _fetch_price(
-        self, session: aiohttp.ClientSession, mint: str
-    ) -> float | None:
+    async def _fetch_price(self, session: aiohttp.ClientSession, mint: str) -> float | None:
         try:
             async with session.get(
                 JUPITER_PRICE_API,
@@ -67,7 +63,7 @@ class JupiterEnricher:
                 price_data = data.get(mint, {})
                 price = price_data.get("usdPrice")
                 return float(price) if price else None
-        except Exception as exc:  # noqa: BLE001
+        except Exception as exc:
             self._log.debug(f"price fetch error for {mint}: {exc}")
             return None
 

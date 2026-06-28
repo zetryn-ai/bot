@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import asyncio
 import time
+
 from loguru import logger
 
 
@@ -31,7 +32,9 @@ class APIKeyPool:
         self._last_unavailable_log: float = 0.0  # suppress repeated "all keys unavailable" spam
 
         log = logger.bind(component=f"utils.key_pool.{name}")
-        log.info(f"{name} key pool initialized with {len(keys)} key(s) | RPM={rpm_limit} RPD={rpd_limit}")
+        log.info(
+            f"{name} key pool initialized with {len(keys)} key(s) | RPM={rpm_limit} RPD={rpd_limit}"
+        )
 
     async def acquire(self) -> str | None:
         async with self._lock:
@@ -60,7 +63,9 @@ class APIKeyPool:
             minute_ago = now - 60
             self._rpm_window[key] = [t for t in self._rpm_window[key] if t > minute_ago]
             if len(self._rpm_window[key]) >= self._rpm_limit:
-                log.debug(f"Key ...{key[-6:]} RPM full ({len(self._rpm_window[key])}/{self._rpm_limit})")
+                log.debug(
+                    f"Key ...{key[-6:]} RPM full ({len(self._rpm_window[key])}/{self._rpm_limit})"
+                )
                 continue
 
             self._rpm_window[key].append(now)
@@ -130,11 +135,14 @@ class APIKeyPool:
                 self._rpd_count[key] = 0
                 self._cooldown_until[key] = 0.0
             self._rpd_reset_at = self._next_midnight()
-            logger.bind(component=f"utils.key_pool.{self._name}").info("RPD counters reset (new day)")
+            logger.bind(component=f"utils.key_pool.{self._name}").info(
+                "RPD counters reset (new day)"
+            )
 
     @staticmethod
     def _next_midnight() -> float:
         import datetime
+
         tomorrow = datetime.date.today() + datetime.timedelta(days=1)
         return datetime.datetime.combine(tomorrow, datetime.time.min).timestamp()
 

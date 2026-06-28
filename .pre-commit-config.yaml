@@ -1,0 +1,14 @@
+# Pre-commit hook config — install with:
+#   pip install pre-commit
+#   pre-commit install
+#
+# After install, every `git commit` runs ruff check + format on staged
+# files. Bypass for a single commit (NOT recommended): `git commit -n`.
+
+repos:
+  - repo: https://github.com/astral-sh/ruff-pre-commit
+    rev: v0.6.9
+    hooks:
+      - id: ruff
+        args: [--fix]
+      - id: ruff-format

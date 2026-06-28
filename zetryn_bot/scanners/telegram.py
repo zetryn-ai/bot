@@ -46,12 +46,12 @@ _SOLANA_CA_RE = re.compile(r"\b([1-9A-HJ-NP-Za-km-z]{32,44})\b")
 
 # Known false positives: Solana program IDs and common non-token addresses.
 _KNOWN_NON_TOKENS: set[str] = {
-    "11111111111111111111111111111111",               # System program
-    "TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA",    # Token program
-    "ATokenGPvbdGVxr1b2hvZbsiqW5xWH25efTNsLJe8bv",    # ATA program
-    "So11111111111111111111111111111111111111112",    # Wrapped SOL
-    "EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v",   # USDC
-    "Es9vMFrzaCERmJfrF4H2FYD4KCoNkY11McCe8BenwNYB",   # USDT
+    "11111111111111111111111111111111",  # System program
+    "TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA",  # Token program
+    "ATokenGPvbdGVxr1b2hvZbsiqW5xWH25efTNsLJe8bv",  # ATA program
+    "So11111111111111111111111111111111111111112",  # Wrapped SOL
+    "EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v",  # USDC
+    "Es9vMFrzaCERmJfrF4H2FYD4KCoNkY11McCe8BenwNYB",  # USDT
 }
 
 
@@ -110,9 +110,7 @@ class TelegramScanner:
         self._reconnect_delay_s = reconnect_delay_s
         self._log = logger.bind(component=self.name)
 
-    async def stream(
-        self, session: aiohttp.ClientSession  # noqa: ARG002 — unused; Protocol-required
-    ) -> AsyncIterator[TokenCandidate]:
+    async def stream(self, session: aiohttp.ClientSession) -> AsyncIterator[TokenCandidate]:
         if not self._channels:
             self._log.info("no channels configured — scanner idle")
             return
@@ -120,7 +118,7 @@ class TelegramScanner:
         client = TelegramClient(self._session_path, self._api_id, self._api_hash)
         try:
             await client.start(phone=self._phone or None)
-        except Exception as exc:  # noqa: BLE001
+        except Exception as exc:
             self._log.error(f"login failed: {exc} — scanner disabled")
             return
 
@@ -166,30 +164,21 @@ class TelegramScanner:
             watcher.cancel()
             await client.disconnect()
 
-    async def _resolve_channels(
-        self, client: TelegramClient
-    ) -> dict[int, ChannelConfig]:
+    async def _resolve_channels(self, client: TelegramClient) -> dict[int, ChannelConfig]:
         """Resolve configured channel usernames to entity IDs."""
         channel_map: dict[int, ChannelConfig] = {}
         for ch in self._channels:
             try:
                 entity = await client.get_entity(ch.username)
                 channel_map[entity.id] = ch
-                self._log.info(
-                    f"  joined: {ch.display_name} ({ch.username}) "
-                    f"[{ch.category}]"
-                )
+                self._log.info(f"  joined: {ch.display_name} ({ch.username}) [{ch.category}]")
             except UserNotParticipantError:
                 self._log.warning(
-                    f"  not a member of {ch.username} — skipping "
-                    "(join manually first)"
+                    f"  not a member of {ch.username} — skipping (join manually first)"
                 )
             except FloodWaitError as exc:
-                self._log.warning(
-                    f"  FloodWait {exc.seconds}s joining {ch.username} "
-                    "— skipping"
-                )
-            except Exception as exc:  # noqa: BLE001
+                self._log.warning(f"  FloodWait {exc.seconds}s joining {ch.username} — skipping")
+            except Exception as exc:
                 self._log.warning(f"  failed to resolve {ch.username}: {exc}")
         return channel_map
 
@@ -197,15 +186,13 @@ class TelegramScanner:
         """Background task: keep the Telethon client connected and healthy."""
         while True:
             try:
-                await asyncio.wait_for(
-                    client.run_until_disconnected(), timeout=30.0
-                )
-            except asyncio.TimeoutError:
+                await asyncio.wait_for(client.run_until_disconnected(), timeout=30.0)
+            except TimeoutError:
                 if not client.is_connected():
                     self._log.warning("disconnected — reconnecting...")
                     try:
                         await client.connect()
-                    except Exception as exc:  # noqa: BLE001
+                    except Exception as exc:
                         self._log.error(f"reconnect failed: {exc}")
                         await asyncio.sleep(self._reconnect_delay_s)
             except FloodWaitError as exc:
@@ -213,7 +200,7 @@ class TelegramScanner:
                 await asyncio.sleep(min(exc.seconds, 300))
             except asyncio.CancelledError:
                 break
-            except Exception as exc:  # noqa: BLE001
+            except Exception as exc:
                 self._log.error(f"watch error: {type(exc).__name__}: {exc}")
                 await asyncio.sleep(15)
 

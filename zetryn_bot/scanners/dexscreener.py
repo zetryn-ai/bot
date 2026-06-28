@@ -28,7 +28,7 @@ discovered the address):
 from __future__ import annotations
 
 from collections.abc import AsyncIterator
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 
 import aiohttp
 
@@ -51,9 +51,7 @@ class DexscreenerNewPairs:
     def __init__(self, poll_interval_s: float = 10.0) -> None:
         self._poll_interval_s = poll_interval_s
 
-    async def stream(
-        self, session: aiohttp.ClientSession
-    ) -> AsyncIterator[TokenCandidate]:
+    async def stream(self, session: aiohttp.ClientSession) -> AsyncIterator[TokenCandidate]:
         url = f"{DEXSCREENER_BASE}/token-profiles/latest/v1"
 
         async def fetch() -> list[TokenCandidate]:
@@ -81,9 +79,7 @@ class DexscreenerTrending:
     def __init__(self, poll_interval_s: float = 30.0) -> None:
         self._poll_interval_s = poll_interval_s
 
-    async def stream(
-        self, session: aiohttp.ClientSession
-    ) -> AsyncIterator[TokenCandidate]:
+    async def stream(self, session: aiohttp.ClientSession) -> AsyncIterator[TokenCandidate]:
         url = f"{DEXSCREENER_BASE}/token-boosts/top/v1"
 
         async def fetch() -> list[TokenCandidate]:
@@ -111,9 +107,7 @@ class DexscreenerBoost:
     def __init__(self, poll_interval_s: float = 20.0) -> None:
         self._poll_interval_s = poll_interval_s
 
-    async def stream(
-        self, session: aiohttp.ClientSession
-    ) -> AsyncIterator[TokenCandidate]:
+    async def stream(self, session: aiohttp.ClientSession) -> AsyncIterator[TokenCandidate]:
         url = f"{DEXSCREENER_BASE}/token-boosts/latest/v1"
 
         async def fetch() -> list[TokenCandidate]:
@@ -138,9 +132,7 @@ class DexscreenerBoost:
 # ──────────────────────────────────────────────────────────────────────────
 
 
-async def fetch_pair_by_address(
-    session: aiohttp.ClientSession, address: str
-) -> dict | None:
+async def fetch_pair_by_address(session: aiohttp.ClientSession, address: str) -> dict | None:
     """Fetch full pair data for a specific token address.
 
     Returns the pair with highest liquidity, or ``None`` if the token has
@@ -153,9 +145,7 @@ async def fetch_pair_by_address(
     pairs = data.get("pairs") or []
     if not pairs:
         return None
-    return max(
-        pairs, key=lambda p: float(p.get("liquidity", {}).get("usd", 0) or 0)
-    )
+    return max(pairs, key=lambda p: float(p.get("liquidity", {}).get("usd", 0) or 0))
 
 
 def enrich_from_pair(token: TokenCandidate, pair: dict) -> TokenCandidate:
@@ -185,11 +175,9 @@ def enrich_from_pair(token: TokenCandidate, pair: dict) -> TokenCandidate:
 
     pair_created = pair.get("pairCreatedAt")
     if pair_created:
-        created_at = datetime.fromtimestamp(pair_created / 1000, tz=timezone.utc)
+        created_at = datetime.fromtimestamp(pair_created / 1000, tz=UTC)
         updates["created_at"] = created_at
-        updates["age_seconds"] = int(
-            (datetime.now(timezone.utc) - created_at).total_seconds()
-        )
+        updates["age_seconds"] = int((datetime.now(UTC) - created_at).total_seconds())
 
     sources = list(token.sources)
     if "dexscreener" not in sources:

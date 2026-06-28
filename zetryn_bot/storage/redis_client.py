@@ -4,9 +4,9 @@ import orjson
 import redis.asyncio as aioredis
 from loguru import logger
 
-CHANNEL_SNIPER    = "scanner.sniper"     # pumpfun_ws, gecko_new, birdeye_new
+CHANNEL_SNIPER = "scanner.sniper"  # pumpfun_ws, gecko_new, birdeye_new
 CHANNEL_MIGRATION = "scanner.migration"  # pumpfun_migration — dedicated fast track
-CHANNEL_MOMENTUM  = "scanner.momentum"   # dexscreener, gecko_trending, birdeye_trending, raydium
+CHANNEL_MOMENTUM = "scanner.momentum"  # dexscreener, gecko_trending, birdeye_trending, raydium
 
 log = logger.bind(component="storage.redis")
 

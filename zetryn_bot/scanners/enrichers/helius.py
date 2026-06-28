@@ -133,9 +133,7 @@ class HeliusEnricher:
                 sorted_accounts = sorted(
                     accounts, key=lambda a: float(a.get("amount", 0)), reverse=True
                 )
-                top10_supply = sum(
-                    float(a.get("amount", 0)) for a in sorted_accounts[:10]
-                )
+                top10_supply = sum(float(a.get("amount", 0)) for a in sorted_accounts[:10])
                 top10_pct = (top10_supply / total_supply) * 100
 
                 # Largest single holder as a heuristic for dev concentration.
@@ -152,7 +150,7 @@ class HeliusEnricher:
                 }
         except asyncio.CancelledError:
             raise
-        except Exception as exc:  # noqa: BLE001
+        except Exception as exc:
             self._log.debug(f"holder fetch error for {mint}: {exc}")
             return {}
 
@@ -190,7 +188,7 @@ class HeliusEnricher:
                 }
         except asyncio.CancelledError:
             raise
-        except Exception as exc:  # noqa: BLE001
+        except Exception as exc:
             self._log.debug(f"metadata fetch error for {mint}: {exc}")
             return {}
 

@@ -26,11 +26,11 @@ _CACHE_TTL = 3600  # 1 hour — Rugcheck safety data changes slowly
 
 # Map risk-name keywords (lowercase substring) → TokenCandidate field name
 _RISK_FLAG_MAP = {
-    "mint":     "is_mintable",
-    "freeze":   "is_freezable",
+    "mint": "is_mintable",
+    "freeze": "is_freezable",
     "honeypot": "is_honeypot",
-    "bundled":  "bundled_supply",
-    "rug":      "dev_rug_history",
+    "bundled": "bundled_supply",
+    "rug": "dev_rug_history",
 }
 
 
@@ -81,8 +81,13 @@ class RugcheckEnricher:
             updates["gmgn_safety_score"] = rc_data["safety_score"]
 
         # Boolean flags are additive — any True signal wins.
-        for field in ("is_mintable", "is_freezable", "is_honeypot",
-                      "bundled_supply", "dev_rug_history"):
+        for field in (
+            "is_mintable",
+            "is_freezable",
+            "is_honeypot",
+            "bundled_supply",
+            "dev_rug_history",
+        ):
             current = getattr(candidate, field)
             if rc_data.get(field) and not current:
                 updates[field] = True
@@ -108,14 +113,12 @@ class RugcheckEnricher:
                 if cached:
                     self._log.debug(f"cache hit for {mint[:8]}...")
                     return json.loads(cached)
-            except Exception:  # noqa: BLE001 — cache failure → fall through to API
+            except Exception:
                 pass
 
         url = f"{RUGCHECK_BASE}/tokens/{mint}/report/summary"
         try:
-            async with session.get(
-                url, timeout=aiohttp.ClientTimeout(total=8)
-            ) as resp:
+            async with session.get(url, timeout=aiohttp.ClientTimeout(total=8)) as resp:
                 if resp.status == 404:
                     return None
                 if resp.status == 429:
@@ -128,7 +131,7 @@ class RugcheckEnricher:
                 result = _parse_report(data)
         except asyncio.CancelledError:
             raise
-        except Exception as exc:  # noqa: BLE001
+        except Exception as exc:
             self._log.debug(f"fetch error for {mint[:8]}...: {exc}")
             return None
 
@@ -136,7 +139,7 @@ class RugcheckEnricher:
         if self._redis is not None:
             try:
                 await self._redis.setex(cache_key, _CACHE_TTL, json.dumps(result))
-            except Exception:  # noqa: BLE001 — cache write failure is non-fatal
+            except Exception:
                 pass
 
         return result

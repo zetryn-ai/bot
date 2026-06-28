@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 from datetime import datetime
-from typing import Optional
+
 from pydantic import BaseModel, Field
 
 
@@ -10,7 +10,7 @@ class TokenCandidate(BaseModel):
     address: str
     symbol: str = ""
     name: str = ""
-    created_at: Optional[datetime] = None
+    created_at: datetime | None = None
 
     # Source tracking
     sources: list[str] = Field(default_factory=list)
@@ -49,22 +49,22 @@ class TokenCandidate(BaseModel):
     dev_rug_history: bool = False
 
     # GMGN OpenAPI entity-labeled wallet counts (in-memory / Redis only — not DB columns)
-    gmgn_smart_wallets: int = 0    # smart_degen — proven profitable wallets
-    gmgn_kol_wallets: int = 0      # renowned — known KOLs
-    gmgn_sniper_wallets: int = 0   # bought at token open
+    gmgn_smart_wallets: int = 0  # smart_degen — proven profitable wallets
+    gmgn_kol_wallets: int = 0  # renowned — known KOLs
+    gmgn_sniper_wallets: int = 0  # bought at token open
     gmgn_bundler_wallets: int = 0  # bot-bundled buys (manipulation risk)
-    gmgn_whale_wallets: int = 0    # large holders
+    gmgn_whale_wallets: int = 0  # large holders
 
     # Pump.fun bonding curve signals (pumpfun_ws only)
-    creator_sol_buy: float = 0.0      # SOL spent by creator at launch
-    bonding_curve_sol: float = 0.0    # real SOL in bonding curve (vSol - 30 virtual)
-    bonding_curve_pct: float = 0.0    # progress toward graduation (0-100%)
-    is_mayhem_mode: bool = False      # pump.fun turbo/mayhem mode flag
-    creator_wallet: str = ""          # traderPublicKey (creator address)
+    creator_sol_buy: float = 0.0  # SOL spent by creator at launch
+    bonding_curve_sol: float = 0.0  # real SOL in bonding curve (vSol - 30 virtual)
+    bonding_curve_pct: float = 0.0  # progress toward graduation (0-100%)
+    is_mayhem_mode: bool = False  # pump.fun turbo/mayhem mode flag
+    creator_wallet: str = ""  # traderPublicKey (creator address)
 
     # DexScreener boost signals — paid promotion = team commitment signal
-    boost_amount: float = 0.0          # current boost (USD, decays over time)
-    boost_total_amount: float = 0.0    # cumulative boost ever spent (USD)
+    boost_amount: float = 0.0  # current boost (USD, decays over time)
+    boost_total_amount: float = 0.0  # cumulative boost ever spent (USD)
 
     # Twitter social signals (set by _enrich_twitter after L2 filter)
     twitter_mentions_1h: int = 0
@@ -72,9 +72,9 @@ class TokenCandidate(BaseModel):
     twitter_influencer_count: int = 0
     twitter_top_influencer_handle: str = ""
     twitter_top_influencer_followers: int = 0
-    twitter_sentiment: str = ""           # "bullish" | "bearish" | "neutral" | ""
+    twitter_sentiment: str = ""  # "bullish" | "bearish" | "neutral" | ""
     twitter_engagement: int = 0
-    twitter_velocity_tpm: float = 0.0     # tweets per minute (last 30m)
+    twitter_velocity_tpm: float = 0.0  # tweets per minute (last 30m)
 
     # AI scoring (set by pipeline)
     ai_score: float = 0.0
@@ -86,7 +86,7 @@ class TokenCandidate(BaseModel):
         total = self.buys_5m + self.sells_5m
         return self.buys_5m / total if total > 0 else 0.0
 
-    def merge_sources(self, other: "TokenCandidate") -> None:
+    def merge_sources(self, other: TokenCandidate) -> None:
         """Merge data from another candidate of same token (multi-source dedup)."""
         for src in other.sources:
             if src not in self.sources:

@@ -32,7 +32,7 @@ import asyncio
 import json
 import os
 import time
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 
 import aiohttp
 import nltk
@@ -45,7 +45,7 @@ from twitter_login.headers import UserAgent
 
 from zetryn_bot.models.token import TokenCandidate
 
-_COOLDOWN_429 = 900   # 15 min
+_COOLDOWN_429 = 900  # 15 min
 _COOLDOWN_AUTH = 3600  # 1 hour
 _INFLUENCER_MIN_FOLLOWERS = 10_000
 
@@ -67,49 +67,136 @@ except LookupError:
 # tweet with several mild ones.
 _CRYPTO_LEXICON: dict[str, float] = {
     # Strong bullish (+3.5 to +4.0)
-    "moonshot": 4.0, "10000x": 4.0, "100x": 3.5, "1000x": 3.5,
-    "gem": 3.5, "hidden gem": 3.5, "alpha": 3.5, "wagmi": 3.5,
-    "diamond hands": 3.5, "🚀🚀🚀": 4.0,
-    "🚀": 3.0, "🌙": 2.5, "💎": 3.0, "🔥": 3.0, "💰": 2.5, "📈": 2.5,
-    "🥇": 2.5, "⭐": 2.0, "💯": 2.5, "✨": 2.0, "💵": 2.5, "🤑": 2.5,
+    "moonshot": 4.0,
+    "10000x": 4.0,
+    "100x": 3.5,
+    "1000x": 3.5,
+    "gem": 3.5,
+    "hidden gem": 3.5,
+    "alpha": 3.5,
+    "wagmi": 3.5,
+    "diamond hands": 3.5,
+    "🚀🚀🚀": 4.0,
+    "🚀": 3.0,
+    "🌙": 2.5,
+    "💎": 3.0,
+    "🔥": 3.0,
+    "💰": 2.5,
+    "📈": 2.5,
+    "🥇": 2.5,
+    "⭐": 2.0,
+    "💯": 2.5,
+    "✨": 2.0,
+    "💵": 2.5,
+    "🤑": 2.5,
     # Bullish (+1.5 to +2.5)
-    "moon": 2.5, "mooning": 2.5, "moonbound": 2.5,
-    "bullish": 2.0, "bull": 2.0, "bullrun": 2.5,
-    "ape": 2.0, "aping": 2.0, "aped": 1.5, "apes": 1.5, "fullport": 2.5,
-    "pump": 2.0, "pumping": 2.5, "pumped": 1.5,
-    "send": 1.5, "sending": 2.0, "sendit": 2.0, "sent": 1.5,
-    "gm": 1.5, "gmgm": 2.0, "based": 2.0, "chad": 2.0, "giga": 2.0,
-    "degen": 1.5, "degens": 1.5,
-    "early": 2.0, "stealth": 2.0, "presale": 1.5, "fairlaunch": 2.0,
-    "viral": 2.5, "trending": 2.0, "explosive": 2.5,
-    "kol": 2.5, "smartmoney": 2.5, "smart money": 2.5, "whale": 2.0,
-    "buy": 1.5, "buying": 1.5, "loaded": 2.0, "loading": 2.0,
-    "stacking": 2.0, "accumulating": 2.0,
-    "lfg": 3.0, "letsgo": 2.5, "lambo": 2.5,
-    "winner": 2.0, "next gem": 3.0,
-    "graduated": 2.0, "graduating": 2.0, "graduation": 2.0,
-    "ath": 2.0, "all time high": 2.5, "new ath": 2.5,
+    "moon": 2.5,
+    "mooning": 2.5,
+    "moonbound": 2.5,
+    "bullish": 2.0,
+    "bull": 2.0,
+    "bullrun": 2.5,
+    "ape": 2.0,
+    "aping": 2.0,
+    "aped": 1.5,
+    "apes": 1.5,
+    "fullport": 2.5,
+    "pump": 2.0,
+    "pumping": 2.5,
+    "pumped": 1.5,
+    "send": 1.5,
+    "sending": 2.0,
+    "sendit": 2.0,
+    "sent": 1.5,
+    "gm": 1.5,
+    "gmgm": 2.0,
+    "based": 2.0,
+    "chad": 2.0,
+    "giga": 2.0,
+    "degen": 1.5,
+    "degens": 1.5,
+    "early": 2.0,
+    "stealth": 2.0,
+    "presale": 1.5,
+    "fairlaunch": 2.0,
+    "viral": 2.5,
+    "trending": 2.0,
+    "explosive": 2.5,
+    "kol": 2.5,
+    "smartmoney": 2.5,
+    "smart money": 2.5,
+    "whale": 2.0,
+    "buy": 1.5,
+    "buying": 1.5,
+    "loaded": 2.0,
+    "loading": 2.0,
+    "stacking": 2.0,
+    "accumulating": 2.0,
+    "lfg": 3.0,
+    "letsgo": 2.5,
+    "lambo": 2.5,
+    "winner": 2.0,
+    "next gem": 3.0,
+    "graduated": 2.0,
+    "graduating": 2.0,
+    "graduation": 2.0,
+    "ath": 2.0,
+    "all time high": 2.5,
+    "new ath": 2.5,
     # Strong bearish (-3.5 to -4.0)
-    "rugpull": -4.0, "rugged": -4.0, "honeypot": -4.0,
-    "scam": -3.5, "scammed": -3.5, "scammer": -3.5,
-    "rekt": -3.5, "liquidated": -3.5,
-    "ngmi": -3.0, "deadcoin": -3.5,
-    "❌": -3.0, "💀": -3.0, "🤡": -2.5,
+    "rugpull": -4.0,
+    "rugged": -4.0,
+    "honeypot": -4.0,
+    "scam": -3.5,
+    "scammed": -3.5,
+    "scammer": -3.5,
+    "rekt": -3.5,
+    "liquidated": -3.5,
+    "ngmi": -3.0,
+    "deadcoin": -3.5,
+    "❌": -3.0,
+    "💀": -3.0,
+    "🤡": -2.5,
     # Bearish (-1.5 to -3.0)
-    "rug": -3.0, "rugging": -3.0,
-    "dump": -2.5, "dumping": -2.5, "dumped": -2.0,
-    "bearish": -2.0, "bear": -1.5,
-    "avoid": -2.5, "stay away": -2.5, "do not buy": -3.0, "dnb": -2.5,
-    "dead": -2.5, "dying": -2.5, "tank": -2.0, "tanking": -2.5,
-    "beware": -2.5, "warning": -2.0, "caution": -1.5,
-    "fud": -1.5, "fudding": -1.5,
-    "paper hands": -1.5, "paperhands": -1.5,
-    "sell": -1.5, "selling": -1.5, "sold": -1.0, "exit": -1.0,
-    "drop": -1.5, "dropping": -1.5,
-    "bundler": -2.5, "bundled": -2.5, "snipers": -1.5,
-    "dev rug": -3.5, "dev sold": -3.0, "dev dump": -3.0,
-    "low liquidity": -2.0, "illiquid": -2.0,
-    "manipulated": -2.5, "wash trade": -2.5, "fake volume": -3.0,
+    "rug": -3.0,
+    "rugging": -3.0,
+    "dump": -2.5,
+    "dumping": -2.5,
+    "dumped": -2.0,
+    "bearish": -2.0,
+    "bear": -1.5,
+    "avoid": -2.5,
+    "stay away": -2.5,
+    "do not buy": -3.0,
+    "dnb": -2.5,
+    "dead": -2.5,
+    "dying": -2.5,
+    "tank": -2.0,
+    "tanking": -2.5,
+    "beware": -2.5,
+    "warning": -2.0,
+    "caution": -1.5,
+    "fud": -1.5,
+    "fudding": -1.5,
+    "paper hands": -1.5,
+    "paperhands": -1.5,
+    "sell": -1.5,
+    "selling": -1.5,
+    "sold": -1.0,
+    "exit": -1.0,
+    "drop": -1.5,
+    "dropping": -1.5,
+    "bundler": -2.5,
+    "bundled": -2.5,
+    "snipers": -1.5,
+    "dev rug": -3.5,
+    "dev sold": -3.0,
+    "dev dump": -3.0,
+    "low liquidity": -2.0,
+    "illiquid": -2.0,
+    "manipulated": -2.5,
+    "wash trade": -2.5,
+    "fake volume": -3.0,
 }
 
 _VADER = SentimentIntensityAnalyzer()
@@ -149,17 +236,14 @@ class TwitterAccountPool:
     async def initialize(self) -> None:
         """Load every ``account_*.json`` cookie file from the configured dir."""
         if not os.path.isdir(self._cookies_dir):
-            raise RuntimeError(
-                f"Twitter cookies dir not found: {self._cookies_dir}"
-            )
+            raise RuntimeError(f"Twitter cookies dir not found: {self._cookies_dir}")
         files = sorted(
-            f for f in os.listdir(self._cookies_dir)
+            f
+            for f in os.listdir(self._cookies_dir)
             if f.startswith("account_") and f.endswith(".json")
         )
         if not files:
-            raise RuntimeError(
-                f"No account_*.json files found in {self._cookies_dir}"
-            )
+            raise RuntimeError(f"No account_*.json files found in {self._cookies_dir}")
 
         for fname in files:
             path = os.path.join(self._cookies_dir, fname)
@@ -171,13 +255,9 @@ class TwitterAccountPool:
                 # they actually matter.
                 client.load_cookies(cookies, validate_cookies=False)
                 self._clients.append(client)
-                self._log.info(
-                    f"loaded {fname} ({len(cookies)} cookies)"
-                )
-            except Exception as exc:  # noqa: BLE001
-                self._log.warning(
-                    f"failed to load {fname}: {exc} — skipping"
-                )
+                self._log.info(f"loaded {fname} ({len(cookies)} cookies)")
+            except Exception as exc:
+                self._log.warning(f"failed to load {fname}: {exc} — skipping")
 
         if not self._clients:
             raise RuntimeError("TwitterAccountPool: no accounts loaded")
@@ -197,21 +277,15 @@ class TwitterAccountPool:
             self._log.warning("all accounts in cooldown")
             return None, None
 
-    async def mark_rate_limited(
-        self, idx: int, cooldown: int = _COOLDOWN_429
-    ) -> None:
+    async def mark_rate_limited(self, idx: int, cooldown: int = _COOLDOWN_429) -> None:
         async with self._lock:
             self._cooldown_until[idx] = time.monotonic() + cooldown
-            self._log.warning(
-                f"account {idx} rate limited — cooldown {cooldown}s"
-            )
+            self._log.warning(f"account {idx} rate limited — cooldown {cooldown}s")
 
     async def mark_auth_error(self, idx: int) -> None:
         async with self._lock:
             self._cooldown_until[idx] = time.monotonic() + _COOLDOWN_AUTH
-            self._log.warning(
-                f"account {idx} auth error — cooldown {_COOLDOWN_AUTH}s"
-            )
+            self._log.warning(f"account {idx} auth error — cooldown {_COOLDOWN_AUTH}s")
 
 
 class TwitterEnricher:
@@ -237,11 +311,9 @@ class TwitterEnricher:
         self,
         mint: str,
         candidate: TokenCandidate,
-        session: aiohttp.ClientSession,  # noqa: ARG002 — unused; Protocol-required
+        session: aiohttp.ClientSession,
     ) -> TokenCandidate:
-        social = await _fetch_twitter_social(
-            self._pool, candidate.symbol, mint
-        )
+        social = await _fetch_twitter_social(self._pool, candidate.symbol, mint)
         if not social or social.get("mentions_1h", 0) == 0:
             return candidate
 
@@ -275,10 +347,7 @@ def build_twitter_pool_from_config(settings) -> TwitterAccountPool | None:
     cookies_dir = getattr(settings, "twitter_cookies_path", "twitter_cookies")
     if not os.path.isdir(cookies_dir):
         return None
-    files = [
-        f for f in os.listdir(cookies_dir)
-        if f.startswith("account_") and f.endswith(".json")
-    ]
+    files = [f for f in os.listdir(cookies_dir) if f.startswith("account_") and f.endswith(".json")]
     if not files:
         return None
     return TwitterAccountPool(cookies_dir=cookies_dir)
@@ -293,11 +362,7 @@ def _load_cookies(path: str) -> dict:
     with open(path) as f:
         data = json.load(f)
     if isinstance(data, list):
-        return {
-            item["name"]: item["value"]
-            for item in data
-            if "name" in item and "value" in item
-        }
+        return {item["name"]: item["value"] for item in data if "name" in item and "value" in item}
     return data
 
 
@@ -320,9 +385,7 @@ def _build_queries(symbol: str, address: str) -> list[str]:
     return queries
 
 
-async def _fetch_twitter_social(
-    pool: TwitterAccountPool, symbol: str, address: str
-) -> dict | None:
+async def _fetch_twitter_social(pool: TwitterAccountPool, symbol: str, address: str) -> dict | None:
     """Fetch Twitter social signals for a token.
 
     Tries multiple query variations and aggregates unique tweets across
@@ -345,9 +408,7 @@ async def _fetch_twitter_social(
             break  # All accounts cooled — return whatever we have.
         try:
             count = 40 if len(queries) == 1 else 25
-            result = await client.search(
-                query, product=SearchTimelineProduct.LIVE, count=count
-            )
+            result = await client.search(query, product=SearchTimelineProduct.LIVE, count=count)
             for tweet in result:
                 tid = getattr(tweet, "id", None) or getattr(tweet, "rest_id", None)
                 if tid is not None:
@@ -368,7 +429,7 @@ async def _fetch_twitter_social(
             continue
         except asyncio.CancelledError:
             raise
-        except Exception as exc:  # noqa: BLE001
+        except Exception as exc:
             log.debug(f"fetch error for {query}: {type(exc).__name__}: {exc}")
             continue
 
@@ -380,7 +441,7 @@ async def _fetch_twitter_social(
 def _process_tweets(tweets, query: str) -> dict:
     """Aggregate raw tweet list into the metrics dict applied to TokenCandidate."""
     log = logger.bind(component="twitter.process")
-    now_ts = datetime.now(timezone.utc).timestamp()
+    now_ts = datetime.now(UTC).timestamp()
     one_hour_ago = now_ts - 3600
     two_hours_ago = now_ts - 7200
     thirty_min_ago = now_ts - 1800
@@ -413,9 +474,7 @@ def _process_tweets(tweets, query: str) -> dict:
         if followers > top_influencer_followers:
             top_influencer_followers = followers
             top_influencer_handle = (
-                getattr(user, "screen_name", "")
-                or getattr(user, "name", "")
-                or ""
+                getattr(user, "screen_name", "") or getattr(user, "name", "") or ""
             )
 
     engagement = sum(
@@ -427,15 +486,15 @@ def _process_tweets(tweets, query: str) -> dict:
     )
 
     recent_30m = [
-        t for t in mentions_1h
+        t
+        for t in mentions_1h
         if (_parse_tweet_ts(getattr(t, "created_at", None)) or 0) > thirty_min_ago
     ]
     velocity_tpm = round(len(recent_30m) / 30, 2)
 
     if mentions_1h:
         compounds = [
-            _VADER.polarity_scores(getattr(t, "text", "") or "")["compound"]
-            for t in mentions_1h
+            _VADER.polarity_scores(getattr(t, "text", "") or "")["compound"] for t in mentions_1h
         ]
         mean_compound = sum(compounds) / len(compounds)
     else:

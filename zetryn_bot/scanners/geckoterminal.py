@@ -20,7 +20,7 @@ from __future__ import annotations
 
 import asyncio
 from collections.abc import AsyncIterator
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 
 import aiohttp
 from loguru import logger
@@ -42,16 +42,18 @@ class GeckoTerminalNewPools:
     def __init__(self, poll_interval_s: float = 15.0) -> None:
         self._poll_interval_s = poll_interval_s
 
-    async def stream(
-        self, session: aiohttp.ClientSession
-    ) -> AsyncIterator[TokenCandidate]:
+    async def stream(self, session: aiohttp.ClientSession) -> AsyncIterator[TokenCandidate]:
         url = f"{GECKO_BASE}/networks/{NETWORK}/new_pools"
         params = {"page": 1, "include": "base_token"}
 
         async def fetch() -> list[TokenCandidate]:
             return await _fetch_pools(
-                session, url, params, source="geckoterminal_new",
-                max_age_seconds=None, name=self.name,
+                session,
+                url,
+                params,
+                source="geckoterminal_new",
+                max_age_seconds=None,
+                name=self.name,
             )
 
         async for candidate in poll_loop(self.name, self._poll_interval_s, fetch):
@@ -66,16 +68,18 @@ class GeckoTerminalTrending:
     def __init__(self, poll_interval_s: float = 45.0) -> None:
         self._poll_interval_s = poll_interval_s
 
-    async def stream(
-        self, session: aiohttp.ClientSession
-    ) -> AsyncIterator[TokenCandidate]:
+    async def stream(self, session: aiohttp.ClientSession) -> AsyncIterator[TokenCandidate]:
         url = f"{GECKO_BASE}/networks/{NETWORK}/trending_pools"
         params = {"include": "base_token"}
 
         async def fetch() -> list[TokenCandidate]:
             return await _fetch_pools(
-                session, url, params, source="geckoterminal_trending",
-                max_age_seconds=86400, name=self.name,
+                session,
+                url,
+                params,
+                source="geckoterminal_trending",
+                max_age_seconds=86400,
+                name=self.name,
             )
 
         async for candidate in poll_loop(self.name, self._poll_interval_s, fetch):
@@ -95,7 +99,9 @@ async def _fetch_pools(
     log = logger.bind(component=name)
     try:
         async with session.get(
-            url, headers=_HEADERS, params=params,
+            url,
+            headers=_HEADERS,
+            params=params,
             timeout=aiohttp.ClientTimeout(total=15),
         ) as resp:
             if resp.status == 429:
@@ -108,7 +114,7 @@ async def _fetch_pools(
             data = await resp.json()
     except asyncio.CancelledError:
         raise
-    except Exception as exc:  # noqa: BLE001
+    except Exception as exc:
         log.warning(f"fetch error: {exc}")
         return []
 
@@ -127,9 +133,7 @@ async def _fetch_pools(
 def _build_token_map(included: list) -> dict[str, dict]:
     """Build an ``id → attributes`` map from a GeckoTerminal ``included`` array."""
     return {
-        item["id"]: item.get("attributes", {})
-        for item in included
-        if item.get("type") == "token"
+        item["id"]: item.get("attributes", {}) for item in included if item.get("type") == "token"
     }
 
 
@@ -142,7 +146,7 @@ def _parse_pool(pool: dict, token_map: dict, *, source: str) -> TokenCandidate |
     base_token_id = base_token_rel.get("id", "")
     if not base_token_id.startswith("solana_"):
         return None
-    mint = base_token_id[len("solana_"):]
+    mint = base_token_id[len("solana_") :]
     if not mint:
         return None
 
@@ -164,7 +168,7 @@ def _parse_pool(pool: dict, token_map: dict, *, source: str) -> TokenCandidate |
 
     age_seconds = 0
     if created_at:
-        age_seconds = int((datetime.now(tz=timezone.utc) - created_at).total_seconds())
+        age_seconds = int((datetime.now(tz=UTC) - created_at).total_seconds())
 
     txns_m5 = attrs.get("transactions", {}).get("m5", {})
     buys_5m = int(txns_m5.get("buys", 0) or 0)

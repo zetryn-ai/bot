@@ -86,3 +86,33 @@ packages = ["zetryn_bot"]
 asyncio_mode = "auto"
 testpaths = ["tests"]
 pythonpath = ["."]
+
+[tool.ruff]
+line-length = 100
+target-version = "py311"
+
+[tool.ruff.lint]
+select = [
+    "E",    # pycodestyle errors
+    "F",    # pyflakes
+    "I",    # isort
+    "B",    # bugbear (mutable defaults, etc.)
+    "UP",   # pyupgrade (modern syntax)
+    "SIM",  # simplify (no-else-return, etc.)
+    "RUF",  # ruff-specific
+]
+# TCH (type-checking-only imports) intentionally excluded: most scanner modules
+# import aiohttp / loguru / websockets / telethon at runtime (async with, .bind,
+# etc.), so the TCH001/002/003 rules misfire. Reintroduce per-file via per-file
+# ignores once we have a settled split between type-only and runtime imports.
+ignore = [
+    "E501",   # line-too-long — formatter handles it
+    "B008",   # function call in default arg — pydantic Field uses this
+    "SIM105", # try-except-pass — fine as-is for "best effort, no recovery" parsing
+]
+
+[tool.ruff.lint.isort]
+known-first-party = ["zetryn_bot"]
+
+[tool.ruff.format]
+quote-style = "double"

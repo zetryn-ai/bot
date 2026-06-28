@@ -48,7 +48,7 @@ async def poll_loop(
             candidates = await fetch_fn()
         except asyncio.CancelledError:
             raise
-        except Exception as exc:  # noqa: BLE001 — survival; logged
+        except Exception as exc:
             log.warning(f"poll error: {exc}")
             candidates = []
         for candidate in candidates:
@@ -84,9 +84,9 @@ async def fetch_json(
             return await resp.json()
     except asyncio.CancelledError:
         raise
-    except Exception as exc:  # noqa: BLE001
+    except Exception as exc:
         log.warning(f"GET {url} failed: {exc}")
         return None
 
 
-__all__ = ["poll_loop", "fetch_json"]
+__all__ = ["fetch_json", "poll_loop"]
