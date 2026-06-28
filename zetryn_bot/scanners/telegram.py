@@ -1,230 +1,271 @@
+"""Telegram — channel-monitor social scanner.
+
+Source: Telegram MTProto via :mod:`telethon`
+Auth: TELEGRAM_API_ID, TELEGRAM_API_HASH (https://my.telegram.org/apps).
+    A session file is written on first run after interactive login; this
+    file is gitignored — never commit it.
+Mechanism: Long-running Telegram client subscribed to a fixed set of
+    public channels. New messages are scanned for Solana mint addresses
+    (base58 32-44 chars) and yielded as :class:`TokenCandidate`s.
+Rate limits: Telegram FloodWait errors are honoured (sleep up to 300s).
+Emits: TokenCandidate via Scanner.stream(). Each candidate's
+    ``sources`` field carries a label of form ``"telegram_<category>"``
+    (e.g. ``"telegram_alpha"``, ``"telegram_smart_money"``); use that
+    to score signal strength on the consumer side. Telegram-specific
+    metadata (channel name, trust weight, snippet) is **not** part of
+    :class:`TokenCandidate` — callers that need it should also subscribe
+    to a side-channel of their own (out of scope for the Scanner
+    Protocol).
+
+The cdexio shape stored an ``_telegram_channel`` / ``_telegram_trust``
+key on the payload dict. The Protocol-clean version drops those keys
+because they would not survive a real :class:`TokenCandidate` validation.
+If the caller needs that context, they should consume from this scanner
+in their own runtime layer (which knows the channel-trust mapping) and
+attach metadata at sink time, not on the candidate itself.
+"""
+
 from __future__ import annotations
 
 import asyncio
 import json
 import re
+from collections.abc import AsyncIterator
 from dataclasses import dataclass
 
-import redis.asyncio as aioredis
+import aiohttp
 from loguru import logger
 from telethon import TelegramClient, events
 from telethon.errors import FloodWaitError, UserNotParticipantError
 from telethon.tl.types import Message
 
-from zetryn_bot.storage.redis_client import CHANNEL_SNIPER
+from zetryn_bot.models.token import TokenCandidate
 
-log = logger.bind(component="scanner.telegram")
-
-# Solana base58 address regex — 32-44 chars, starts with common prefixes
+# Solana base58 address regex — 32-44 chars, base58 alphabet (no 0OIl).
 _SOLANA_CA_RE = re.compile(r"\b([1-9A-HJ-NP-Za-km-z]{32,44})\b")
 
-# Known false positives (Solana program IDs, common non-token addresses)
+# Known false positives: Solana program IDs and common non-token addresses.
 _KNOWN_NON_TOKENS: set[str] = {
-    "11111111111111111111111111111111",          # System program
-    "TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA", # Token program
-    "ATokenGPvbdGVxr1b2hvZbsiqW5xWH25efTNsLJe8bv",  # ATA program
+    "11111111111111111111111111111111",               # System program
+    "TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA",    # Token program
+    "ATokenGPvbdGVxr1b2hvZbsiqW5xWH25efTNsLJe8bv",    # ATA program
     "So11111111111111111111111111111111111111112",    # Wrapped SOL
-    "EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v",  # USDC
-    "Es9vMFrzaCERmJfrF4H2FYD4KCoNkY11McCe8BenwNYB",  # USDT
-}
-
-# Trust weight per channel category — multiplied into signal strength
-_TRUST_WEIGHTS: dict[str, float] = {
-    "alpha":       0.9,   # verified alpha callers
-    "smart_money": 0.95,  # whale/smart money trackers
-    "calls":       0.7,   # general call groups (noisier)
-    "launch":      0.8,   # launch announcement feeds
-    "default":     0.5,
+    "EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v",   # USDC
+    "Es9vMFrzaCERmJfrF4H2FYD4KCoNkY11McCe8BenwNYB",   # USDT
 }
 
 
 @dataclass
 class ChannelConfig:
-    username: str        # @channel_username or invite hash
-    category: str        # one of _TRUST_WEIGHTS keys
-    display_name: str    # human-readable label for logs
+    """One Telegram channel to monitor.
 
-
-async def run_telegram_scanner(
-    redis: aioredis.Redis,
-    stop_event: asyncio.Event,
-    api_id: int,
-    api_hash: str,
-    session_name: str,
-    channels: list[ChannelConfig],
-    phone: str = "",
-    pause_event: asyncio.Event | None = None,
-) -> None:
+    Attributes:
+        username: ``@channel`` or invite hash. Must be reachable by the
+            authenticated session (user is already a member).
+        category: Free-form label used by the consumer to score signal
+            strength (e.g. ``"alpha"``, ``"smart_money"``, ``"calls"``).
+            Surfaced via the ``sources`` field on each candidate.
+        display_name: Human-readable label for log messages.
     """
-    Long-running Telegram scanner task.
-    Connects to Telegram MTProto, monitors configured channels in real-time,
-    extracts Solana CAs from messages, and publishes to scanner.sniper.
+
+    username: str
+    category: str
+    display_name: str
+
+
+class TelegramScanner:
+    """Telethon-backed Telegram channel monitor.
+
+    Yields one :class:`TokenCandidate` per detected mint address per
+    incoming message. The candidate's ``sources`` field is set to
+    ``["telegram_<category>"]`` so consumers can route by signal type.
+
+    Construction is parameter-heavy because Telegram authentication is
+    parameter-heavy. See the :class:`ChannelConfig` dataclass and the
+    :func:`build_channels_from_config` helper for parsing channel lists
+    from a Settings object.
+
+    The :meth:`stream` method requires an :class:`aiohttp.ClientSession`
+    only to satisfy the :class:`Scanner` Protocol — Telegram itself uses
+    its own MTProto transport, not HTTP. The session arg is unused.
     """
-    if not channels:
-        log.info("No Telegram channels configured — scanner disabled")
-        return
 
-    client = TelegramClient(session_name, api_id, api_hash)
+    name = "telegram"
 
-    try:
-        await client.start(phone=phone if phone else None)
-    except Exception as e:
-        log.error(f"Telegram login failed: {e} — scanner disabled")
-        return
+    def __init__(
+        self,
+        api_id: int,
+        api_hash: str,
+        session_path: str,
+        channels: list[ChannelConfig],
+        *,
+        phone: str = "",
+        reconnect_delay_s: float = 30.0,
+    ) -> None:
+        self._api_id = api_id
+        self._api_hash = api_hash
+        self._session_path = session_path
+        self._channels = channels
+        self._phone = phone
+        self._reconnect_delay_s = reconnect_delay_s
+        self._log = logger.bind(component=self.name)
 
-    log.info(f"Telegram connected — monitoring {len(channels)} channel(s)")
+    async def stream(
+        self, session: aiohttp.ClientSession  # noqa: ARG002 — unused; Protocol-required
+    ) -> AsyncIterator[TokenCandidate]:
+        if not self._channels:
+            self._log.info("no channels configured — scanner idle")
+            return
 
-    # Build lookup: entity_id → ChannelConfig
-    channel_map: dict[int, ChannelConfig] = {}
-    for ch in channels:
+        client = TelegramClient(self._session_path, self._api_id, self._api_hash)
         try:
-            entity = await client.get_entity(ch.username)
-            channel_map[entity.id] = ch
-            log.info(f"  Joined: {ch.display_name} ({ch.username}) [{ch.category}]")
-        except UserNotParticipantError:
-            log.warning(f"  Not a member of {ch.username} — skipping (join manually first)")
-        except FloodWaitError as e:
-            log.warning(f"  FloodWait {e.seconds}s joining {ch.username} — skipping")
-        except Exception as e:
-            log.warning(f"  Failed to resolve {ch.username}: {e}")
-
-    if not channel_map:
-        log.warning("No Telegram channels joined — scanner idle")
-        await client.disconnect()
-        return
-
-    @client.on(events.NewMessage(chats=list(channel_map.keys())))
-    async def _on_message(event: events.NewMessage.Event) -> None:
-        # Discard messages when engine is paused — connection stays alive
-        if pause_event and pause_event.is_set():
+            await client.start(phone=self._phone or None)
+        except Exception as exc:  # noqa: BLE001
+            self._log.error(f"login failed: {exc} — scanner disabled")
             return
 
-        msg: Message = event.message
-        text = msg.message or ""
-        if not text:
+        channel_map = await self._resolve_channels(client)
+        if not channel_map:
+            self._log.warning("no channels resolved — scanner idle")
+            await client.disconnect()
             return
 
-        channel_id = event.chat_id
-        ch_config = channel_map.get(channel_id)
-        if not ch_config:
-            return
+        queue: asyncio.Queue[TokenCandidate] = asyncio.Queue()
 
-        addresses = _extract_solana_addresses(text)
-        if not addresses:
-            return
+        @client.on(events.NewMessage(chats=list(channel_map.keys())))
+        async def _on_message(event: events.NewMessage.Event) -> None:
+            msg: Message = event.message
+            text = msg.message or ""
+            if not text:
+                return
+            ch_config = channel_map.get(event.chat_id)
+            if not ch_config:
+                return
+            for address in _extract_solana_addresses(text):
+                candidate = TokenCandidate(
+                    address=address,
+                    sources=[f"telegram_{ch_config.category}"],
+                )
+                await queue.put(candidate)
+                self._log.info(
+                    f"CA detected: {address[:8]}... "
+                    f"| channel={ch_config.display_name} "
+                    f"[{ch_config.category}]"
+                )
 
-        trust_weight = _TRUST_WEIGHTS.get(ch_config.category, _TRUST_WEIGHTS["default"])
+        self._log.info("active — listening for messages")
 
-        for address in addresses:
-            await _publish_alpha(redis, address, text, ch_config, trust_weight)
-
-    log.info("Telegram scanner active — listening for messages")
-
-    # Run until stop_event is set
-    while not stop_event.is_set():
+        # Drive the Telethon event loop in the background; pull from the
+        # queue in this coroutine and yield to the caller.
+        watcher = asyncio.create_task(self._watch_connection(client))
         try:
-            await asyncio.wait_for(
-                client.run_until_disconnected(),
-                timeout=30,
-            )
-        except asyncio.TimeoutError:
-            if not client.is_connected():
-                log.warning("Telegram disconnected — reconnecting...")
-                try:
-                    await client.connect()
-                except Exception as e:
-                    log.error(f"Telegram reconnect failed: {e}")
-                    await asyncio.sleep(30)
-        except FloodWaitError as e:
-            log.warning(f"Telegram FloodWait {e.seconds}s")
-            await asyncio.sleep(min(e.seconds, 300))
-        except asyncio.CancelledError:
-            break
-        except Exception as e:
-            log.error(f"Telegram error: {type(e).__name__}: {e}")
-            await asyncio.sleep(15)
+            while True:
+                candidate = await queue.get()
+                yield candidate
+        finally:
+            watcher.cancel()
+            await client.disconnect()
 
-    log.info("Telegram scanner stopping")
-    await client.disconnect()
+    async def _resolve_channels(
+        self, client: TelegramClient
+    ) -> dict[int, ChannelConfig]:
+        """Resolve configured channel usernames to entity IDs."""
+        channel_map: dict[int, ChannelConfig] = {}
+        for ch in self._channels:
+            try:
+                entity = await client.get_entity(ch.username)
+                channel_map[entity.id] = ch
+                self._log.info(
+                    f"  joined: {ch.display_name} ({ch.username}) "
+                    f"[{ch.category}]"
+                )
+            except UserNotParticipantError:
+                self._log.warning(
+                    f"  not a member of {ch.username} — skipping "
+                    "(join manually first)"
+                )
+            except FloodWaitError as exc:
+                self._log.warning(
+                    f"  FloodWait {exc.seconds}s joining {ch.username} "
+                    "— skipping"
+                )
+            except Exception as exc:  # noqa: BLE001
+                self._log.warning(f"  failed to resolve {ch.username}: {exc}")
+        return channel_map
+
+    async def _watch_connection(self, client: TelegramClient) -> None:
+        """Background task: keep the Telethon client connected and healthy."""
+        while True:
+            try:
+                await asyncio.wait_for(
+                    client.run_until_disconnected(), timeout=30.0
+                )
+            except asyncio.TimeoutError:
+                if not client.is_connected():
+                    self._log.warning("disconnected — reconnecting...")
+                    try:
+                        await client.connect()
+                    except Exception as exc:  # noqa: BLE001
+                        self._log.error(f"reconnect failed: {exc}")
+                        await asyncio.sleep(self._reconnect_delay_s)
+            except FloodWaitError as exc:
+                self._log.warning(f"FloodWait {exc.seconds}s")
+                await asyncio.sleep(min(exc.seconds, 300))
+            except asyncio.CancelledError:
+                break
+            except Exception as exc:  # noqa: BLE001
+                self._log.error(f"watch error: {type(exc).__name__}: {exc}")
+                await asyncio.sleep(15)
 
 
 def _extract_solana_addresses(text: str) -> list[str]:
-    """Extract valid Solana CA addresses from message text."""
+    """Extract valid Solana mint addresses from a message body."""
     candidates = _SOLANA_CA_RE.findall(text)
-    result = []
+    seen: set[str] = set()
+    out: list[str] = []
     for addr in candidates:
-        if addr in _KNOWN_NON_TOKENS:
+        if addr in _KNOWN_NON_TOKENS or addr in seen:
             continue
-        if len(addr) < 32 or len(addr) > 44:
+        if not (32 <= len(addr) <= 44):
             continue
-        if addr not in result:
-            result.append(addr)
-    return result
-
-
-async def _publish_alpha(
-    redis: aioredis.Redis,
-    address: str,
-    message_text: str,
-    ch_config: ChannelConfig,
-    trust_weight: float,
-) -> None:
-    """Publish detected CA to scanner.sniper with telegram_alpha source metadata."""
-    source_tag = f"telegram_{ch_config.category}"
-    payload = {
-        "address": address,
-        "symbol": "",
-        "name": "",
-        "sources": [source_tag],
-        "liquidity_usd": 0.0,
-        "market_cap_usd": 0.0,
-        "price_usd": 0.0,
-        "volume_5m_usd": 0.0,
-        "txns_5m": 0,
-        # Telegram-specific metadata (not in TokenCandidate — used for debug logging only)
-        "_telegram_channel": ch_config.display_name,
-        "_telegram_trust": trust_weight,
-        "_telegram_snippet": message_text[:200].replace("\n", " "),
-    }
-
-    try:
-        await redis.publish(CHANNEL_SNIPER, json.dumps(payload))
-        log.info(
-            f"[TELEGRAM] CA detected: {address[:8]}... "
-            f"| channel={ch_config.display_name} [{ch_config.category}] "
-            f"| trust={trust_weight:.2f}"
-        )
-    except Exception as e:
-        log.warning(f"Telegram publish error: {e}")
+        seen.add(addr)
+        out.append(addr)
+    return out
 
 
 def build_channels_from_config(settings) -> list[ChannelConfig]:
-    """
-    Parse TELEGRAM_CHANNELS env var into ChannelConfig list.
+    """Parse a JSON-encoded ``TELEGRAM_CHANNELS`` env var into a config list.
 
-    Format (JSON array in env var):
-      TELEGRAM_CHANNELS=[
-        {"username": "@alphagroup1", "category": "alpha", "display_name": "Alpha Group 1"},
-        {"username": "@smartmoney", "category": "smart_money", "display_name": "Smart Money"},
-        {"username": "t.me/+invitehash", "category": "calls", "display_name": "Call Group"}
-      ]
+    Expected format::
+
+        TELEGRAM_CHANNELS=[
+            {"username": "@alphagroup1", "category": "alpha", "display_name": "Alpha 1"},
+            {"username": "@smartmoney",  "category": "smart_money", "display_name": "Smart"},
+            {"username": "t.me/+hash",   "category": "calls",  "display_name": "Calls"}
+        ]
     """
+    log = logger.bind(component="telegram.config")
     raw = getattr(settings, "telegram_channels", "").strip()
     if not raw:
         return []
     try:
         items = json.loads(raw)
-        channels = []
-        for item in items:
-            username = item.get("username", "").strip()
-            if not username:
-                continue
-            channels.append(ChannelConfig(
+    except json.JSONDecodeError as exc:
+        log.warning(f"TELEGRAM_CHANNELS parse error: {exc} — scanner disabled")
+        return []
+    out: list[ChannelConfig] = []
+    for item in items:
+        username = item.get("username", "").strip()
+        if not username:
+            continue
+        out.append(
+            ChannelConfig(
                 username=username,
                 category=item.get("category", "default"),
                 display_name=item.get("display_name", username),
-            ))
-        return channels
-    except json.JSONDecodeError as e:
-        log.warning(f"TELEGRAM_CHANNELS parse error: {e} — telegram scanner disabled")
-        return []
+            )
+        )
+    return out
+
+
+__all__ = ["ChannelConfig", "TelegramScanner", "build_channels_from_config"]

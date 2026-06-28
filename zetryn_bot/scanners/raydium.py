@@ -1,77 +1,115 @@
+"""Raydium — new-pool discovery polling.
+
+Source: https://api-v3.raydium.io
+Auth: None (public API)
+Mechanism: REST polling every 15s for recently created pools.
+Rate limits: Not formally published; conservative cadence used.
+Emits: TokenCandidate via Scanner.stream(). Caller decides the sink.
+
+Filters at the scanner level:
+- Only base tokens that are NOT SOL or USDC are yielded.
+- Pools older than 24 hours are skipped (this is a *new pools* scanner).
+
+A module-level :func:`fetch_pool_by_mint` helper is preserved for callers
+that want to look up a specific pool on demand (e.g. for cross-referencing
+during decision time).
+"""
+
 from __future__ import annotations
 
-import asyncio
+from collections.abc import AsyncIterator
 from datetime import datetime, timezone
 
 import aiohttp
 from loguru import logger
 
 from zetryn_bot.models.token import TokenCandidate
-from zetryn_bot.storage.redis_client import publish_momentum
+from zetryn_bot.scanners._common import fetch_json, poll_loop
 
 RAYDIUM_API = "https://api-v3.raydium.io"
+SOL_MINT = "So11111111111111111111111111111111111111112"
+USDC_MINT = "EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v"
 
-log = logger.bind(component="scanner.raydium")
 
+class RaydiumNewPools:
+    """Polling scanner for Raydium ``/pools/info/list`` — new pools."""
 
-async def poll_raydium_new_pools(session: aiohttp.ClientSession, redis) -> None:
-    """Fetch recently created Raydium pools (new liquidity events)."""
-    url = f"{RAYDIUM_API}/pools/info/list"
-    params = {
-        "poolType": "all",
-        "poolSortField": "default",
-        "sortType": "desc",
-        "pageSize": 50,
-        "page": 1,
-    }
-    try:
-        async with session.get(url, params=params, timeout=aiohttp.ClientTimeout(total=10)) as resp:
-            if resp.status != 200:
-                log.warning(f"Raydium pools returned {resp.status}")
-                return
-            data = await resp.json()
+    name = "raydium.new_pools"
+
+    def __init__(self, poll_interval_s: float = 15.0, page_size: int = 50) -> None:
+        self._poll_interval_s = poll_interval_s
+        self._page_size = page_size
+
+    async def stream(
+        self, session: aiohttp.ClientSession
+    ) -> AsyncIterator[TokenCandidate]:
+        url = f"{RAYDIUM_API}/pools/info/list"
+        params: dict[str, str | int] = {
+            "poolType": "all",
+            "poolSortField": "default",
+            "sortType": "desc",
+            "pageSize": self._page_size,
+            "page": 1,
+        }
+
+        async def fetch() -> list[TokenCandidate]:
+            data = await fetch_json(session, url, name=self.name, params=params)
+            if not isinstance(data, dict):
+                return []
             pools = data.get("data", {}).get("data", []) or []
+            out: list[TokenCandidate] = []
             for pool in pools:
                 token = _parse_raydium_pool(pool)
                 if token:
-                    await publish_momentum(redis, token.model_dump(mode="json"))
-    except asyncio.CancelledError:
-        raise
-    except Exception as e:
-        log.warning(f"Raydium pool poll error: {e}")
+                    out.append(token)
+            return out
+
+        async for candidate in poll_loop(self.name, self._poll_interval_s, fetch):
+            yield candidate
 
 
 async def fetch_pool_by_mint(
     session: aiohttp.ClientSession, mint: str
 ) -> dict | None:
-    """Fetch specific pool data for a token mint address."""
+    """Fetch the highest-liquidity Raydium pool for a given mint address."""
+    log = logger.bind(component="raydium.fetch_pool")
     url = f"{RAYDIUM_API}/pools/info/mint"
-    params = {"mint1": mint, "poolType": "all", "poolSortField": "liquidity", "sortType": "desc"}
+    params: dict[str, str | int] = {
+        "mint1": mint,
+        "poolType": "all",
+        "poolSortField": "liquidity",
+        "sortType": "desc",
+    }
     try:
-        async with session.get(url, params=params, timeout=aiohttp.ClientTimeout(total=10)) as resp:
+        async with session.get(
+            url, params=params, timeout=aiohttp.ClientTimeout(total=10)
+        ) as resp:
             if resp.status != 200:
                 return None
             data = await resp.json()
             pools = data.get("data", {}).get("data", []) or []
             return pools[0] if pools else None
-    except Exception as e:
-        log.debug(f"Raydium pool fetch error for {mint}: {e}")
+    except Exception as exc:  # noqa: BLE001
+        log.debug(f"pool fetch error for {mint}: {exc}")
         return None
 
 
 def _parse_raydium_pool(pool: dict) -> TokenCandidate | None:
-    """Parse Raydium pool response into TokenCandidate."""
-    # Raydium pools have mintA and mintB — we want the non-SOL / non-USDC side
-    sol_mint = "So11111111111111111111111111111111111111112"
-    usdc_mint = "EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v"
+    """Parse a Raydium pool dict into a :class:`TokenCandidate`.
 
+    Returns ``None`` when:
+    - the pool is SOL/USDC-only (no base memecoin),
+    - the pool has no creation timestamp,
+    - the pool is older than 24 hours.
+    """
     mint_a = pool.get("mintA", {}) or {}
     mint_b = pool.get("mintB", {}) or {}
 
-    base_mint = mint_a if mint_b.get("address") in (sol_mint, usdc_mint) else mint_b
+    # The "base" token is the side that is NOT SOL/USDC.
+    base_mint = mint_a if mint_b.get("address") in (SOL_MINT, USDC_MINT) else mint_b
 
     address = base_mint.get("address")
-    if not address or address in (sol_mint, usdc_mint):
+    if not address or address in (SOL_MINT, USDC_MINT):
         return None
 
     day_data = pool.get("day", {}) or {}
@@ -82,11 +120,12 @@ def _parse_raydium_pool(pool: dict) -> TokenCandidate | None:
     except (ValueError, TypeError):
         created_at = None
     if created_at is None:
-        return None  # no timestamp = established pool without creation record
-    now = datetime.now(timezone.utc)
-    age_seconds = int((now - created_at).total_seconds())
+        # No timestamp = established pool with no creation record; skip.
+        return None
+
+    age_seconds = int((datetime.now(timezone.utc) - created_at).total_seconds())
     if age_seconds > 86400:
-        return None  # older than 24h — not a new pool target
+        return None  # Older than 24h — not a new pool target.
 
     return TokenCandidate(
         address=address,
@@ -99,3 +138,6 @@ def _parse_raydium_pool(pool: dict) -> TokenCandidate | None:
         volume_1h_usd=float(day_data.get("volume", 0) or 0) / 24,
         price_usd=float(pool.get("price", 0) or 0),
     )
+
+
+__all__ = ["RaydiumNewPools", "fetch_pool_by_mint"]

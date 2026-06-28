@@ -1,7 +1,26 @@
+"""Pump.fun — WebSocket streaming for new-token and migration events.
+
+Source: https://pumpportal.fun
+Auth: PUMPPORTAL_API_KEY (optional but recommended for stability)
+Mechanism: Single persistent WebSocket subscribing to two channels:
+    - ``subscribeNewToken`` — every new token launched on Pump.fun
+    - ``subscribeMigration`` — tokens graduating from Pump.fun to
+      Raydium / PumpSwap (proven demand, ~85 SOL raised)
+Rate limits: None observed; the WS is push-based.
+Emits: TokenCandidate via Scanner.stream(). Caller routes by source
+    label — new tokens carry ``"pumpfun_ws"``, migrations carry
+    ``"pumpfun_migration"``.
+
+The WebSocket reconnects on disconnect with a 5-second back-off. Inside
+``stream()`` the loop is wrapped so that one disconnect doesn't kill the
+iterator; the caller stays subscribed across reconnects.
+"""
+
 from __future__ import annotations
 
 import asyncio
 import json
+from collections.abc import AsyncIterator
 from datetime import datetime, timezone
 
 import aiohttp
@@ -9,87 +28,97 @@ import websockets
 from loguru import logger
 
 from zetryn_bot.models.token import TokenCandidate
-from zetryn_bot.storage.redis_client import publish_sniper, publish_migration
 
 PUMPPORTAL_WS_BASE = "wss://pumpportal.fun/api/data"
 
-log = logger.bind(component="scanner.pumpfun")
+# Conservative USD-per-SOL estimate used for back-of-envelope mcap / liquidity
+# conversions. Real-time price is the caller's concern; this is just a sanity
+# baseline so downstream filters have a number to look at.
+_SOL_PRICE_USD = 150.0
 
 
-async def stream_pumpfun_events(redis, api_key: str = "", pause_event=None) -> None:
-    """
-    Single WebSocket connection subscribing to:
-    - subscribeNewToken    : token baru launch di Pump.fun
-    - subscribeMigration   : token graduate dari Pump.fun ke Raydium/PumpSwap
+class PumpfunStream:
+    """WebSocket scanner for Pump.fun new-token + migration events."""
 
-    When pause_event is set: WS stays connected (reconnect is expensive) but
-    incoming messages are discarded without publishing to Redis.
-    """
-    ws_url = f"{PUMPPORTAL_WS_BASE}?api-key={api_key}" if api_key else PUMPPORTAL_WS_BASE
-    masked = f"...{api_key[-6:]}" if api_key else "no key"
-    log.info(f"Connecting to Pumpportal WebSocket (key={masked})")
+    name = "pumpfun.ws"
 
-    async with websockets.connect(ws_url, ping_interval=20) as ws:
-        # Subscribe to both channels in single connection
-        await ws.send(json.dumps({"method": "subscribeNewToken"}))
-        await ws.send(json.dumps({"method": "subscribeMigration"}))
-        log.info("Subscribed to newToken + migration events")
+    def __init__(self, api_key: str = "", reconnect_delay_s: float = 5.0) -> None:
+        self._api_key = api_key
+        self._reconnect_delay_s = reconnect_delay_s
+        self._log = logger.bind(component=self.name)
 
-        async for raw_msg in ws:
-            # Discard when paused — keeps WS alive, avoids reconnect cost
-            if pause_event and pause_event.is_set():
-                continue
+    async def stream(
+        self, session: aiohttp.ClientSession  # noqa: ARG002 — unused but required by Protocol
+    ) -> AsyncIterator[TokenCandidate]:
+        ws_url = (
+            f"{PUMPPORTAL_WS_BASE}?api-key={self._api_key}"
+            if self._api_key
+            else PUMPPORTAL_WS_BASE
+        )
+        masked = f"...{self._api_key[-6:]}" if self._api_key else "no key"
+
+        while True:
             try:
-                data = json.loads(raw_msg)
-                token = _parse_event(data)
-                if token:
-                    is_migration = "pumpfun_migration" in token.sources
-                    if is_migration:
-                        await publish_migration(redis, token.model_dump(mode="json"))
-                    else:
-                        await publish_sniper(redis, token.model_dump(mode="json"))
-                    src = token.sources[0] if token.sources else "?"
-                    log.debug(f"[{src}] {token.symbol or '?'} ({token.address[:8]}...)")
+                self._log.info(f"connecting (key={masked})")
+                async with websockets.connect(ws_url, ping_interval=20) as ws:
+                    await ws.send(json.dumps({"method": "subscribeNewToken"}))
+                    await ws.send(json.dumps({"method": "subscribeMigration"}))
+                    self._log.info("subscribed to newToken + migration events")
+
+                    async for raw_msg in ws:
+                        try:
+                            data = json.loads(raw_msg)
+                        except json.JSONDecodeError as exc:
+                            self._log.debug(f"non-JSON message: {exc}")
+                            continue
+                        token = _parse_event(data)
+                        if token:
+                            yield token
             except asyncio.CancelledError:
                 raise
-            except Exception as e:
-                log.warning(f"Parse error: {e}")
+            except Exception as exc:  # noqa: BLE001 — reconnect on any failure
+                self._log.warning(
+                    f"disconnected: {exc} — reconnecting in {self._reconnect_delay_s}s"
+                )
+                await asyncio.sleep(self._reconnect_delay_s)
 
 
 def _parse_event(data: dict) -> TokenCandidate | None:
-    """Route event to the correct parser based on payload shape."""
-    # Migration event has 'pool' or 'newTokenMint' or 'mint' + 'pool' fields
+    """Route an incoming event to the correct parser based on payload shape."""
+    # Migration payloads carry both 'mint' and 'pool' (the new venue's pool).
     if "pool" in data or ("mint" in data and "pool" in data):
         return _parse_migration_event(data)
-    # New token event has 'mint' without 'pool'
     if "mint" in data:
         return _parse_newtoken_event(data)
     return None
 
 
 def _parse_newtoken_event(data: dict) -> TokenCandidate | None:
-    """Parse subscribeNewToken event."""
+    """Parse a ``subscribeNewToken`` event into a :class:`TokenCandidate`."""
     mint = data.get("mint")
     if not mint:
         return None
 
     created_ts = data.get("created_timestamp")
-    created_at = datetime.fromtimestamp(created_ts / 1000, tz=timezone.utc) if created_ts else None
+    created_at = (
+        datetime.fromtimestamp(created_ts / 1000, tz=timezone.utc)
+        if created_ts
+        else None
+    )
 
-    # Bonding curve signals — from vSolInBondingCurve
-    # Pump.fun virtual reserve = ~30 SOL; graduation threshold = 85 SOL total
-    # Real SOL in curve = vSolInBondingCurve - 30; graduation needs 55 more real SOL
+    # Bonding-curve signals: Pump.fun's virtual reserve is ~30 SOL; graduation
+    # threshold is ~85 SOL total → 55 more "real" SOL needed.
     v_sol = float(data.get("vSolInBondingCurve") or 0)
     creator_sol = float(data.get("solAmount") or 0)
-    sol_price_est = 150.0  # conservative USD estimate
     real_sol_in_curve = max(0.0, v_sol - 30.0)
-    bonding_pct = min(100.0, real_sol_in_curve / 55.0 * 100) if v_sol > 0 else 0.0
+    bonding_pct = (
+        min(100.0, real_sol_in_curve / 55.0 * 100) if v_sol > 0 else 0.0
+    )
 
-    # Market cap: prefer marketCapSol field if available
     mcap_sol = float(data.get("marketCapSol") or data.get("market_cap") or 0)
-    mcap_usd = mcap_sol * sol_price_est if mcap_sol > 0 else 0.0
+    mcap_usd = mcap_sol * _SOL_PRICE_USD if mcap_sol > 0 else 0.0
 
-    token = TokenCandidate(
+    return TokenCandidate(
         address=mint,
         symbol=data.get("symbol", ""),
         name=data.get("name", ""),
@@ -97,9 +126,8 @@ def _parse_newtoken_event(data: dict) -> TokenCandidate | None:
         sources=["pumpfun_ws"],
         age_seconds=0,
         market_cap_usd=mcap_usd,
-        liquidity_usd=real_sol_in_curve * sol_price_est,
+        liquidity_usd=real_sol_in_curve * _SOL_PRICE_USD,
         price_usd=float(data.get("price", 0) or 0),
-        # Bonding curve enrichment
         creator_sol_buy=creator_sol,
         bonding_curve_sol=real_sol_in_curve,
         bonding_curve_pct=round(bonding_pct, 1),
@@ -107,19 +135,14 @@ def _parse_newtoken_event(data: dict) -> TokenCandidate | None:
         creator_wallet=data.get("traderPublicKey", ""),
     )
 
-    log.debug(
-        f"[pumpfun_ws] {token.symbol or '?'} ({mint[:8]}...) "
-        f"creator_buy={creator_sol:.1f}SOL curve={bonding_pct:.1f}%"
-        + (" [MAYHEM]" if token.is_mayhem_mode else "")
-    )
-    return token
-
 
 def _parse_migration_event(data: dict) -> TokenCandidate | None:
-    """
-    Parse subscribeMigration event — token graduated from Pump.fun to Raydium/PumpSwap.
-    These tokens have proven demand (raised ~85 SOL) and real liquidity.
-    Fast-tracked through L2 filter — graduation itself is the entry signal.
+    """Parse a ``subscribeMigration`` event into a :class:`TokenCandidate`.
+
+    Migrations indicate a token has graduated from Pump.fun to Raydium /
+    PumpSwap — proven demand (raised ~85 SOL) and real on-DEX liquidity.
+    Graduation takes 24-72h on average, so ``age_seconds`` is floored at
+    24h to avoid downstream filters mistaking these for fresh launches.
     """
     mint = data.get("mint") or data.get("newTokenMint") or data.get("tokenMint")
     if not mint:
@@ -128,19 +151,16 @@ def _parse_migration_event(data: dict) -> TokenCandidate | None:
     symbol = data.get("symbol", "")
     name = data.get("name", "")
 
-    # Pump.fun graduation threshold is ~85 SOL. Use event data if available.
-    sol_amount = float(data.get("sol_amount", 0) or data.get("initialSol", 0) or 85)
-    sol_price = 150  # conservative estimate
-    liquidity_usd = sol_amount * sol_price
+    # Use event-supplied SOL amount when present, else fall back to the
+    # Pump.fun graduation threshold (~85 SOL) as a baseline.
+    sol_amount = float(
+        data.get("sol_amount", 0) or data.get("initialSol", 0) or 85
+    )
+    liquidity_usd = sol_amount * _SOL_PRICE_USD
 
-    # Graduation takes 24-72h on average — use 86400s (24h) as floor for age
-    # so holder/dev checks are not bypassed by age_seconds=0
     age_seconds = max(int(data.get("age_seconds", 0) or 0), 86400)
-
     mcap = float(data.get("market_cap", 0) or data.get("usdMarketCap", 0) or 0)
     price = float(data.get("price", 0) or 0)
-
-    log.info(f"[MIGRATION] {symbol or mint[:8]}... graduated to Raydium | liq≈${liquidity_usd:.0f}")
 
     return TokenCandidate(
         address=mint,
@@ -152,3 +172,6 @@ def _parse_migration_event(data: dict) -> TokenCandidate | None:
         market_cap_usd=mcap,
         price_usd=price,
     )
+
+
+__all__ = ["PumpfunStream"]

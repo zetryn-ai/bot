@@ -1,129 +1,202 @@
+"""DexScreener — token discovery and promotion-signal polling.
+
+Source: https://docs.dexscreener.com
+Auth: None (public API)
+Mechanism: REST polling, three independent endpoints exposed as three
+    Scanner classes (new pairs / trending / boost).
+Rate limits: ~300 RPM combined across all endpoints (per docs).
+Emits: TokenCandidate via Scanner.stream(). Caller decides the sink.
+
+Three scanners in one module — each is a thin wrapper around a single
+endpoint with its own poll cadence:
+
+- :class:`DexscreenerNewPairs` — recently added token profiles. Default
+  10s interval. Higher cadence because new tokens are time-sensitive.
+- :class:`DexscreenerTrending` — top boost leaders (cumulative). Slower
+  cadence; trending data updates slowly. Default 30s.
+- :class:`DexscreenerBoost` — latest boost promotions (paid for
+  visibility, proxy for team commitment). Default 20s.
+
+Two module-level enrichment helpers are kept for callers that want to
+top up a TokenCandidate with full pair data (used after the scanner has
+discovered the address):
+
+- :func:`fetch_pair_by_address`
+- :func:`enrich_from_pair`
+"""
+
 from __future__ import annotations
 
-import asyncio
+from collections.abc import AsyncIterator
 from datetime import datetime, timezone
 
 import aiohttp
-from loguru import logger
 
 from zetryn_bot.models.token import TokenCandidate
-from zetryn_bot.storage.redis_client import publish_momentum
+from zetryn_bot.scanners._common import fetch_json, poll_loop
 
 DEXSCREENER_BASE = "https://api.dexscreener.com"
 
-log = logger.bind(component="scanner.dexscreener")
+
+# ──────────────────────────────────────────────────────────────────────────
+# Scanner classes
+# ──────────────────────────────────────────────────────────────────────────
 
 
-async def poll_dexscreener_new_pairs(session: aiohttp.ClientSession, redis) -> None:
-    """Fetch latest token profiles (recently added to DexScreener)."""
-    url = f"{DEXSCREENER_BASE}/token-profiles/latest/v1"
-    try:
-        async with session.get(url, timeout=aiohttp.ClientTimeout(total=10)) as resp:
-            if resp.status != 200:
-                log.warning(f"DexScreener profiles returned {resp.status}")
-                return
-            items = await resp.json()
-            for item in items:
+class DexscreenerNewPairs:
+    """Polling scanner for ``token-profiles/latest`` — newly added tokens."""
+
+    name = "dexscreener.new_pairs"
+
+    def __init__(self, poll_interval_s: float = 10.0) -> None:
+        self._poll_interval_s = poll_interval_s
+
+    async def stream(
+        self, session: aiohttp.ClientSession
+    ) -> AsyncIterator[TokenCandidate]:
+        url = f"{DEXSCREENER_BASE}/token-profiles/latest/v1"
+
+        async def fetch() -> list[TokenCandidate]:
+            data = await fetch_json(session, url, name=self.name)
+            if not isinstance(data, list):
+                return []
+            out: list[TokenCandidate] = []
+            for item in data:
                 if item.get("chainId") != "solana":
                     continue
-                token = _parse_profile(item)
+                token = _parse_profile(item, source="dexscreener")
                 if token:
-                    await publish_momentum(redis, token.model_dump(mode="json"))
-    except asyncio.CancelledError:
-        raise
-    except Exception as e:
-        log.warning(f"New pairs poll error: {e}")
+                    out.append(token)
+            return out
+
+        async for candidate in poll_loop(self.name, self._poll_interval_s, fetch):
+            yield candidate
 
 
-async def poll_dexscreener_trending(session: aiohttp.ClientSession, redis) -> None:
-    """Fetch top boosted tokens on Solana from DexScreener (cumulative boost leaders)."""
-    url = f"{DEXSCREENER_BASE}/token-boosts/top/v1"
-    try:
-        async with session.get(url, timeout=aiohttp.ClientTimeout(total=10)) as resp:
-            if resp.status != 200:
-                log.warning(f"DexScreener trending returned {resp.status}")
-                return
-            items = await resp.json()
-            for item in items:
+class DexscreenerTrending:
+    """Polling scanner for ``token-boosts/top`` — cumulative boost leaders."""
+
+    name = "dexscreener.trending"
+
+    def __init__(self, poll_interval_s: float = 30.0) -> None:
+        self._poll_interval_s = poll_interval_s
+
+    async def stream(
+        self, session: aiohttp.ClientSession
+    ) -> AsyncIterator[TokenCandidate]:
+        url = f"{DEXSCREENER_BASE}/token-boosts/top/v1"
+
+        async def fetch() -> list[TokenCandidate]:
+            data = await fetch_json(session, url, name=self.name)
+            if not isinstance(data, list):
+                return []
+            out: list[TokenCandidate] = []
+            for item in data:
                 if item.get("chainId") != "solana":
                     continue
-                token = _parse_profile(item)
+                token = _parse_profile(item, source="dexscreener")
                 if token:
-                    await publish_momentum(redis, token.model_dump(mode="json"))
-    except asyncio.CancelledError:
-        raise
-    except Exception as e:
-        log.warning(f"Trending poll error: {e}")
+                    out.append(token)
+            return out
+
+        async for candidate in poll_loop(self.name, self._poll_interval_s, fetch):
+            yield candidate
 
 
+class DexscreenerBoost:
+    """Polling scanner for ``token-boosts/latest`` — latest paid promotions."""
 
-async def poll_dexscreener_boost(session: aiohttp.ClientSession, redis) -> None:
-    """Fetch most recent boost promotions on Solana from DexScreener."""
-    url = f"{DEXSCREENER_BASE}/token-boosts/latest/v1"
-    try:
-        async with session.get(url, timeout=aiohttp.ClientTimeout(total=10)) as resp:
-            if resp.status != 200:
-                log.warning(f"DexScreener boost returned {resp.status}")
-                return
-            items = await resp.json()
-            for item in items:
+    name = "dexscreener.boost"
+
+    def __init__(self, poll_interval_s: float = 20.0) -> None:
+        self._poll_interval_s = poll_interval_s
+
+    async def stream(
+        self, session: aiohttp.ClientSession
+    ) -> AsyncIterator[TokenCandidate]:
+        url = f"{DEXSCREENER_BASE}/token-boosts/latest/v1"
+
+        async def fetch() -> list[TokenCandidate]:
+            data = await fetch_json(session, url, name=self.name)
+            if not isinstance(data, list):
+                return []
+            out: list[TokenCandidate] = []
+            for item in data:
                 if item.get("chainId") != "solana":
                     continue
                 token = _parse_profile(item, source="dexscreener_boost")
                 if token:
-                    await publish_momentum(redis, token.model_dump(mode="json"))
-    except asyncio.CancelledError:
-        raise
-    except Exception as e:
-        log.warning(f"Boost poll error: {e}")
+                    out.append(token)
+            return out
+
+        async for candidate in poll_loop(self.name, self._poll_interval_s, fetch):
+            yield candidate
 
 
-async def fetch_pair_by_address(session: aiohttp.ClientSession, address: str) -> dict | None:
-    """Fetch full pair data for a specific token address."""
+# ──────────────────────────────────────────────────────────────────────────
+# Module-level enrichment helpers (still useful — used after discovery)
+# ──────────────────────────────────────────────────────────────────────────
+
+
+async def fetch_pair_by_address(
+    session: aiohttp.ClientSession, address: str
+) -> dict | None:
+    """Fetch full pair data for a specific token address.
+
+    Returns the pair with highest liquidity, or ``None`` if the token has
+    no pairs or the request fails.
+    """
     url = f"{DEXSCREENER_BASE}/latest/dex/tokens/{address}"
-    try:
-        async with session.get(url, timeout=aiohttp.ClientTimeout(total=10)) as resp:
-            if resp.status != 200:
-                return None
-            data = await resp.json()
-            pairs = data.get("pairs") or []
-            # Return the pair with highest liquidity
-            if not pairs:
-                return None
-            return max(pairs, key=lambda p: float(p.get("liquidity", {}).get("usd", 0) or 0))
-    except Exception as e:
-        log.warning(f"Pair fetch error for {address}: {e}")
+    data = await fetch_json(session, url, name="dexscreener.fetch_pair")
+    if not isinstance(data, dict):
         return None
+    pairs = data.get("pairs") or []
+    if not pairs:
+        return None
+    return max(
+        pairs, key=lambda p: float(p.get("liquidity", {}).get("usd", 0) or 0)
+    )
 
 
 def enrich_from_pair(token: TokenCandidate, pair: dict) -> TokenCandidate:
-    """Enrich a TokenCandidate with full DexScreener pair data."""
+    """Return ``token`` enriched with DexScreener pair fields.
+
+    Returns a new :class:`TokenCandidate` via ``model_copy(update=...)`` —
+    the input is not mutated.
+    """
     liquidity = pair.get("liquidity", {}) or {}
     volume = pair.get("volume", {}) or {}
     txns = pair.get("txns", {}) or {}
-    price_change = pair.get("priceChange", {}) or {}
 
-    token.liquidity_usd = float(liquidity.get("usd", 0) or 0)
-    token.market_cap_usd = float(pair.get("marketCap", 0) or 0)
-    token.price_usd = float(pair.get("priceUsd", 0) or 0)
-    token.volume_5m_usd = float(volume.get("m5", 0) or 0)
-    token.volume_1h_usd = float(volume.get("h1", 0) or 0)
+    updates: dict = {
+        "liquidity_usd": float(liquidity.get("usd", 0) or 0),
+        "market_cap_usd": float(pair.get("marketCap", 0) or 0),
+        "price_usd": float(pair.get("priceUsd", 0) or 0),
+        "volume_5m_usd": float(volume.get("m5", 0) or 0),
+        "volume_1h_usd": float(volume.get("h1", 0) or 0),
+    }
 
     txns_5m = txns.get("m5", {}) or {}
-    token.txns_5m = int(txns_5m.get("buys", 0) or 0) + int(txns_5m.get("sells", 0) or 0)
-    token.buys_5m = int(txns_5m.get("buys", 0) or 0)
-    token.sells_5m = int(txns_5m.get("sells", 0) or 0)
+    buys_5m = int(txns_5m.get("buys", 0) or 0)
+    sells_5m = int(txns_5m.get("sells", 0) or 0)
+    updates["buys_5m"] = buys_5m
+    updates["sells_5m"] = sells_5m
+    updates["txns_5m"] = buys_5m + sells_5m
 
     pair_created = pair.get("pairCreatedAt")
     if pair_created:
         created_at = datetime.fromtimestamp(pair_created / 1000, tz=timezone.utc)
-        token.created_at = created_at
-        now = datetime.now(timezone.utc)
-        token.age_seconds = int((now - created_at).total_seconds())
+        updates["created_at"] = created_at
+        updates["age_seconds"] = int(
+            (datetime.now(timezone.utc) - created_at).total_seconds()
+        )
 
-    if "dexscreener" not in token.sources:
-        token.sources.append("dexscreener")
-    return token
+    sources = list(token.sources)
+    if "dexscreener" not in sources:
+        sources.append("dexscreener")
+    updates["sources"] = sources
+
+    return token.model_copy(update=updates)
 
 
 def _parse_profile(item: dict, source: str = "dexscreener") -> TokenCandidate | None:
@@ -147,3 +220,12 @@ def _parse_profile(item: dict, source: str = "dexscreener") -> TokenCandidate | 
         boost_amount=boost_amount,
         boost_total_amount=boost_total,
     )
+
+
+__all__ = [
+    "DexscreenerBoost",
+    "DexscreenerNewPairs",
+    "DexscreenerTrending",
+    "enrich_from_pair",
+    "fetch_pair_by_address",
+]
