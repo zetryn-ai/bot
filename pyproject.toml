@@ -79,6 +79,9 @@ Repository = "https://github.com/zetryn-ai/bot"
 Issues = "https://github.com/zetryn-ai/bot/issues"
 "Framework (zetryn-trading)" = "https://github.com/zetryn-ai/ai-agent"
 
+[tool.hatch.metadata]
+allow-direct-references = true
+
 [tool.hatch.build.targets.wheel]
 packages = ["zetryn_bot"]
 
