@@ -16,6 +16,6 @@ execution, wallet, and the wire-up to `zetryn-trading` agents will be added
 in subsequent phases (see ROADMAP discussion).
 """
 
-__version__ = "0.0.0"
+__version__ = "0.1.0"
 
 __all__ = ["__version__"]

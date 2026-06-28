@@ -1,7 +1,7 @@
 # M1 — Scanner Refactor & Baseline
 
 **Date:** 2026-06-28
-**Status:** Draft
+**Status:** Shipped (v0.1.0)
 **Target version:** v0.1.0
 
 Refactor the 11 scanner source modules imported from the cdexio bot

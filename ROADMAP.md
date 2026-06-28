@@ -14,7 +14,7 @@ appropriately on landing.
 
 | ID | Title | Status | Version | Design |
 |---|---|---|---|---|
-| **M1** | Scanner refactor & baseline | 🚧 in-progress | v0.1.0 (target) | [2026-06-28-m1-scanner-refactor.md](docs/plans/2026-06-28-m1-scanner-refactor.md) |
+| **M1** | Scanner refactor & baseline | ✅ shipped | v0.1.0 | [2026-06-28-m1-scanner-refactor.md](docs/plans/2026-06-28-m1-scanner-refactor.md) |
 | **M2** | Wire scanners to `zetryn-trading` | 📅 planned | v0.2.0 | TBD |
 | **M3** | Orchestration runtime (`main.py`) | 📅 planned | v0.3.0 | TBD |
 | **M4** | Execution layer (swap, position, reconciliation) | 📅 planned | v0.4.0 | TBD |
