@@ -7,12 +7,13 @@
 to [`zetryn-trading`](https://github.com/zetryn-ai/ai-agent).
 
 > [!WARNING]
-> **v0.1.0 — pre-alpha, M1 (scanner refactor) shipped.** 6 scanners + 5
-> enrichers conform to the `Scanner` / `TokenEnricher` Protocols; the
-> code style is unified, ruff-checked, and pre-commit-hooked. There is
-> **no runtime yet** — no `main.py`, no wire-up to `zetryn-trading`
-> agents, no execution layer. Those land in subsequent milestones; see
-> [`ROADMAP.md`](ROADMAP.md).
+> **v0.2.0 — pre-alpha, M1+M2 shipped.** 6 scanners + 5 enrichers conform
+> to the `Scanner` / `TokenEnricher` Protocols; a `BotPipeline` now wires
+> a candidate through enrichment, an adapter to the framework's
+> `TokenInput`, a compiled `zetryn-trading` agent, and a swappable
+> `DecisionSink`. There is **no orchestration runtime yet** — no
+> `main.py`, no Redis on the decision hot path, no execution layer.
+> Those land in subsequent milestones; see [`ROADMAP.md`](ROADMAP.md).
 
 ## Boundary mirror of zetryn-trading
 
@@ -25,13 +26,18 @@ zetryn_bot      : executes  (scanners → normalise → publish) ← this repo
 The framework decides; the bot executes. The framework never holds your
 private key or touches the chain; this repo will own all that I/O.
 
-## What's in here (v0.1.0)
+## What's in here (v0.2.0)
 
 ```
 zetryn_bot/
-├── __init__.py                    __version__ = "0.1.0"
+├── __init__.py                    __version__ = "0.2.0"
 ├── config.py                      Pydantic Settings (scanner-only env vars)
 ├── logger_setup.py                Loguru config
+├── adapters/token_input.py        to_token_input() — pure TokenCandidate -> TokenInput
+├── pipeline/                      M2: enrich -> adapt -> agent -> sink
+│   ├── enrich.py                  enrich_candidate() — composes TokenEnricher chain
+│   ├── sinks.py                   DecisionSink Protocol + LogSink + ListSink
+│   └── runner.py                  BotPipeline — agent-agnostic runner
 ├── scanners/                      6 SOURCES + 9 CLASSES (Scanner Protocol)
 │   ├── protocol.py                Scanner + TokenEnricher Protocols
 │   ├── _common.py                 poll_loop() + fetch_json() helpers
@@ -58,13 +64,12 @@ zetryn_bot/
 ## What's NOT here yet (see [ROADMAP.md](ROADMAP.md))
 
 - ❌ `main.py` / orchestration runtime — M3
-- ❌ Integration with `zetryn-trading` agents (scanner output → decision graph) — M2
+- ❌ Redis-backed decision sink / fan-out to a dashboard — M3
 - ❌ Execution layer — swap (Jupiter), position manager, reconciliation — M4
 - ❌ Wallet — encryption, key management, monitor, sweeper — M5
 - ❌ Persistence — Postgres for `DecisionLog`, position state — M6
 - ❌ Observability — Telegram/Discord notifier, heartbeat, crash dump — M7
 - ❌ API server + dashboard — M9
-- ❌ Tests — M2 (around the integration boundary, not in isolation)
 - ❌ Docker / deployment — M8
 
 ## Install
@@ -129,6 +134,38 @@ async for candidate in some_scanner.stream(session):
     enriched = await rugcheck.enrich(candidate.address, enriched, session)
     await sink(enriched)
 ```
+
+## Wire a scanner to `zetryn-trading` (M2)
+
+`BotPipeline` composes enrichment, the adapter, a compiled agent graph,
+and a sink. It's agent-agnostic — pass any compiled `Graph`:
+
+```python
+import asyncio
+import aiohttp
+from strategies.agents.scanner import build_scanner
+from zetryn.llm import LLMClient  # real usage — omit for the rule-only path
+
+from zetryn_bot.pipeline.runner import BotPipeline
+from zetryn_bot.pipeline.sinks import LogSink
+from zetryn_bot.scanners.dexscreener import DexscreenerNewPairs
+from zetryn_bot.scanners.enrichers.helius import HeliusEnricher
+
+async def main() -> None:
+    agent = build_scanner(llm_client=LLMClient(...))  # or None for gates-only
+    pipeline = BotPipeline(
+        agent,
+        enrichers=[HeliusEnricher(api_keys=[...])],
+        sink=LogSink(),
+    )
+    async with aiohttp.ClientSession() as session:
+        await pipeline.run_scanner(DexscreenerNewPairs(), session)
+
+asyncio.run(main())
+```
+
+`pipeline.process(candidate, session)` is the single-candidate primitive
+if you're driving the loop yourself (e.g. from `scripts/m2_smoke.py`).
 
 Each scanner / enricher module documents its own contract (env vars,
 output channel hint, rate limits) in its module docstring. See the

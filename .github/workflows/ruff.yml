@@ -18,12 +18,12 @@ jobs:
       - name: Install ruff
         run: pip install ruff==0.6.9
       - name: ruff check
-        run: ruff check zetryn_bot/
+        run: ruff check zetryn_bot/ tests/ scripts/
       - name: ruff format --check
-        run: ruff format --check zetryn_bot/
+        run: ruff format --check zetryn_bot/ tests/ scripts/
 
   smoke:
-    name: import smoke test
+    name: import smoke test + pytest
     runs-on: ubuntu-latest
     needs: lint
     steps:
@@ -37,5 +37,9 @@ jobs:
         run: |
           pip install -e ".[dev]"
           python -c "import nltk; nltk.download('vader_lexicon', quiet=True)"
-      - name: Offline smoke test
-        run: python scripts/m1_smoke.py
+      - name: Offline smoke tests
+        run: |
+          python scripts/m1_smoke.py
+          python scripts/m2_smoke.py
+      - name: pytest
+        run: pytest

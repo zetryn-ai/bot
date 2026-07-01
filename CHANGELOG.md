@@ -5,6 +5,44 @@ All notable changes to `zetryn-bot` will be documented in this file.
 The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and
 the project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.2.0] — 2026-07-01
+
+**M2 — Wire scanners to `zetryn-trading` shipped.** The bot is now able to
+run a candidate through a real framework agent and get a `Decision` back,
+in-process, no service boundary.
+
+### Added
+
+- **`zetryn_bot.adapters.token_input`** — `to_token_input(candidate)`, a
+  pure mapping from `TokenCandidate` to the framework's `TokenInput`. No
+  I/O; unit-tested against every non-trivial field group (market,
+  activity, holders, contract, wallets, pumpfun, social/twitter). Also
+  handles the holder-percentage rescale (bot stores 0–100, framework
+  expects 0–1) and the scanner-name → `TokenSource` literal narrowing.
+- **`zetryn_bot.pipeline.enrich.enrich_candidate()`** — sequential
+  composition of `TokenEnricher` implementations; a raising enricher is
+  skipped (logged) rather than blocking the rest of the chain.
+- **`zetryn_bot.pipeline.sinks`** — `DecisionSink` Protocol, `LogSink`
+  (production default), `ListSink` (test fixture). A Redis sink is
+  deferred to M3.
+- **`zetryn_bot.pipeline.runner.BotPipeline`** — agent-agnostic runner
+  (`BotPipeline(agent, enrichers=..., sink=..., config=...)`). Adapter
+  failures emit a synthetic `abort` decision (`flags={"synthetic": True}`)
+  instead of crashing the loop; agent exceptions are caught and logged the
+  same way.
+- **`scripts/m2_smoke.py`** — offline smoke test running a real
+  `build_scanner(llm_client=None)` against a healthy and a dangerous
+  synthetic candidate.
+- First test suite: 17 tests (`tests/`) — unit coverage for the adapter,
+  enrichment, sinks, and runner, plus 2 integration tests against a real
+  `build_scanner` graph. Wired into CI (`ruff.yml` now runs `pytest`).
+
+### Dependencies
+
+- Added `zetryn-trading>=1.1.0` from PyPI. (The M2 design doc originally
+  planned a git+ssh commit-SHA pin, written before `zetryn-trading` v1.0.0
+  landed on PyPI on 2026-06-28 — corrected once the PyPI release existed.)
+
 ## [0.1.0] — 2026-06-28
 
 **M1 — Scanner refactor & baseline shipped.** First minor release after
