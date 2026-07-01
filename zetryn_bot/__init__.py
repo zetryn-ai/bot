@@ -11,14 +11,15 @@ Boundary mirror of `zetryn-trading`:
     zetryn-trading  : decides   (graph + LLM + rules)
     zetryn_bot      : executes  (scanners → normalise → publish; later: swap, wallet)
 
-M1 shipped the scanner sources (Phase 1 scaffolding). M2 adds the wire-up
+M1 shipped the scanner sources (Phase 1 scaffolding). M2 added the wire-up
 to `zetryn-trading`: an adapter bridging `TokenCandidate` -> `TokenInput`,
-an enrichment pipeline, and a `BotPipeline` runner that invokes a compiled
-agent graph and emits the resulting `Decision` to a swappable sink.
-Orchestration, swap execution, and wallet land in subsequent phases (see
-ROADMAP.md).
+an enrichment pipeline, and a `BotPipeline` runner. M3 adds the runtime:
+`python -m zetryn_bot` boots the enabled scanners concurrently and fans
+their candidates through a shared queue + worker pool into the pipeline,
+with crash-safe supervision and graceful shutdown. Swap execution and
+wallet land in subsequent phases (see ROADMAP.md).
 """
 
-__version__ = "0.2.0"
+__version__ = "0.3.0"
 
 __all__ = ["__version__"]

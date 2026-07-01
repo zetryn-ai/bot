@@ -16,7 +16,7 @@ appropriately on landing.
 |---|---|---|---|---|
 | **M1** | Scanner refactor & baseline | ✅ shipped | v0.1.0 | [2026-06-28-m1-scanner-refactor.md](docs/plans/2026-06-28-m1-scanner-refactor.md) |
 | **M2** | Wire scanners to `zetryn-trading` | ✅ shipped | v0.2.0 | [2026-06-28-m2-wire-zetryn-trading.md](docs/plans/2026-06-28-m2-wire-zetryn-trading.md) |
-| **M3** | Orchestration runtime (`main.py`) | 📅 planned | v0.3.0 | TBD |
+| **M3** | Orchestration runtime (`python -m zetryn_bot`) | ✅ shipped | v0.3.0 | [2026-07-01-m3-orchestration-runtime.md](docs/plans/2026-07-01-m3-orchestration-runtime.md) |
 | **M4** | Execution layer (swap, position, reconciliation) | 📅 planned | v0.4.0 | TBD |
 | **M5** | Wallet management (encryption, monitor, sweeper) | 📅 planned | v0.5.0 | TBD |
 | **M6** | Persistence (PostgreSQL — DecisionLog, position state) | 📅 planned | v0.6.0 | TBD |

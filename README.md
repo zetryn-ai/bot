@@ -7,13 +7,15 @@
 to [`zetryn-trading`](https://github.com/zetryn-ai/ai-agent).
 
 > [!WARNING]
-> **v0.2.0 — pre-alpha, M1+M2 shipped.** 6 scanners + 5 enrichers conform
-> to the `Scanner` / `TokenEnricher` Protocols; a `BotPipeline` now wires
-> a candidate through enrichment, an adapter to the framework's
-> `TokenInput`, a compiled `zetryn-trading` agent, and a swappable
-> `DecisionSink`. There is **no orchestration runtime yet** — no
-> `main.py`, no Redis on the decision hot path, no execution layer.
-> Those land in subsequent milestones; see [`ROADMAP.md`](ROADMAP.md).
+> **v0.3.0 — pre-alpha, M1–M3 shipped.** 6 scanners + 5 enrichers conform
+> to the `Scanner` / `TokenEnricher` Protocols; a `BotPipeline` wires a
+> candidate through enrichment → adapter → a compiled `zetryn-trading`
+> agent → a swappable `DecisionSink`; and `python -m zetryn_bot` now boots
+> a runtime that runs the enabled scanners concurrently through that
+> pipeline with crash-safe supervision and graceful shutdown. There is
+> **no execution layer yet** — no swap, no wallet, no Redis on the
+> decision hot path. Those land in subsequent milestones; see
+> [`ROADMAP.md`](ROADMAP.md).
 
 ## Boundary mirror of zetryn-trading
 
@@ -26,18 +28,24 @@ zetryn_bot      : executes  (scanners → normalise → publish) ← this repo
 The framework decides; the bot executes. The framework never holds your
 private key or touches the chain; this repo will own all that I/O.
 
-## What's in here (v0.2.0)
+## What's in here (v0.3.0)
 
 ```
 zetryn_bot/
-├── __init__.py                    __version__ = "0.2.0"
-├── config.py                      Pydantic Settings (scanner-only env vars)
+├── __init__.py                    __version__ = "0.3.0"
+├── __main__.py                    M3: runtime entry point (python -m zetryn_bot)
+├── config.py                      Pydantic Settings (scanner + runtime env vars)
 ├── logger_setup.py                Loguru config
 ├── adapters/token_input.py        to_token_input() — pure TokenCandidate -> TokenInput
 ├── pipeline/                      M2: enrich -> adapt -> agent -> sink
 │   ├── enrich.py                  enrich_candidate() — composes TokenEnricher chain
 │   ├── sinks.py                   DecisionSink Protocol + LogSink + ListSink
 │   └── runner.py                  BotPipeline — agent-agnostic runner
+├── runtime/                       M3: orchestration runtime
+│   ├── orchestrator.py            Orchestrator — queue + worker pool + lifecycle
+│   ├── registry.py                build_enabled_scanners() + build_enrichers()
+│   ├── dedup.py                   DedupCache — collapse duplicate mints (TTL)
+│   └── llm.py                     try_build_llm_client() — optional LLM wiring
 ├── scanners/                      6 SOURCES + 9 CLASSES (Scanner Protocol)
 │   ├── protocol.py                Scanner + TokenEnricher Protocols
 │   ├── _common.py                 poll_loop() + fetch_json() helpers
@@ -63,8 +71,8 @@ zetryn_bot/
 
 ## What's NOT here yet (see [ROADMAP.md](ROADMAP.md))
 
-- ❌ `main.py` / orchestration runtime — M3
-- ❌ Redis-backed decision sink / fan-out to a dashboard — M3
+- ❌ Redis-backed decision sink / fan-out to a dashboard — M7 / M9
+- ❌ Per-channel agent routing (sniper / graduation) — future milestone
 - ❌ Execution layer — swap (Jupiter), position manager, reconciliation — M4
 - ❌ Wallet — encryption, key management, monitor, sweeper — M5
 - ❌ Persistence — Postgres for `DecisionLog`, position state — M6
@@ -93,8 +101,34 @@ cp .env.example .env
 # Edit .env — minimal: REDIS_URL. Scanners with missing keys are skipped at runtime.
 ```
 
-You'll also need a running Redis instance (`redis-server`). PostgreSQL is
-**not** required until M6.
+Redis is **not** required in M3 — the runtime is single-process and keeps
+candidates in-memory. It comes back when a Redis-backed sink lands (M7/M9).
+PostgreSQL is **not** required until M6.
+
+## Run the runtime (M3)
+
+```bash
+python -m zetryn_bot          # or the console script: zetryn-bot
+```
+
+Boots every enabled scanner concurrently and fans their candidates through
+the pipeline. With no `.env`, the zero-arg scanners (Dexscreener ×3,
+GeckoTerminal ×2, Raydium) run and decisions are logged; add API keys to
+enable the rest. Ctrl-C (SIGINT/SIGTERM) drains and shuts down cleanly.
+
+Tunables (env / `.env`):
+
+| Var | Default | Meaning |
+|---|---|---|
+| `SCANNERS_ENABLED` | *(empty = all auto)* | CSV of scanner `.name`s to keep |
+| `WORKERS` | `4` | pipeline worker pool size (caps LLM concurrency) |
+| `QUEUE_SIZE` | `1000` | candidate queue bound (backpressure) |
+| `DEDUP_TTL_S` | `60` | window for collapsing duplicate mints |
+| `LLM_MODEL` | *(provider default)* | override the LLM model when a key is set |
+
+The runtime runs **rule-only** unless a provider key (`GROQ_API_KEY`,
+`OPENROUTER_API_KEY`, or `GEMINI_API_KEY`) is present — those are resolved by
+`zetryn-trading`, not by the bot's `Settings`.
 
 ## Use individual scanners
 

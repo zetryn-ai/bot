@@ -5,6 +5,47 @@ All notable changes to `zetryn-bot` will be documented in this file.
 The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and
 the project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.3.0] — 2026-07-02
+
+**M3 — Orchestration runtime shipped.** The bot now has a runnable entry
+point: `python -m zetryn_bot` (or the `zetryn-bot` console script) boots the
+enabled scanners concurrently and drives them through the M2 pipeline until
+it receives a shutdown signal.
+
+### Added
+
+- **`zetryn_bot.__main__`** — entry point. Loads `Settings`, sets up logging,
+  builds the runtime, installs SIGINT/SIGTERM handlers, and runs until
+  signalled, then drains cleanly. Runs with no `.env` (zero-arg scanners
+  always run). Registered as the `zetryn-bot` console script.
+- **`zetryn_bot.runtime.orchestrator.Orchestrator`** — runs each scanner as a
+  crash-supervised producer feeding a bounded `asyncio.Queue`; a worker pool
+  dequeues and drives `BotPipeline.process`. Decouples scan rate from decision
+  rate (backpressure) and caps concurrency (and LLM calls) at the worker count.
+- **`zetryn_bot.runtime.registry`** — `build_enabled_scanners()` +
+  `build_enrichers()`: config → instances. Zero-arg scanners always on;
+  key-requiring sources on only when their key is present (skip + warn).
+  `SCANNERS_ENABLED` narrows the set.
+- **`zetryn_bot.runtime.dedup.DedupCache`** — collapses duplicate mints seen
+  across scanners within a TTL window (injectable clock).
+- **`zetryn_bot.runtime.llm.try_build_llm_client`** — builds an LLM client
+  from the framework's `ProviderConfig` when a provider key is present
+  (`GROQ_API_KEY` / `OPENROUTER_API_KEY` / `GEMINI_API_KEY`, `LLM_MODEL`
+  override); returns `None` (rule-only) otherwise. The bot never reads the key
+  value — the framework resolves it, preserving the LLM-key boundary.
+- New `Settings` fields: `scanners_enabled`, `telegram_channels`, `workers`,
+  `queue_size`, `dedup_ttl_s`.
+- `scripts/m3_smoke.py` + 17 new tests (dedup, registry, llm, orchestrator).
+  CI runs all three smoke scripts + pytest.
+
+### Fixed
+
+- `Settings` now annotates its CSV list fields (`helius_api_keys`,
+  `birdeye_api_keys`, `scanners_enabled`) with `NoDecode`, so an empty
+  `HELIUS_API_KEYS=` in `.env` no longer crashes with a JSON parse error
+  before the CSV validator runs. (Latent since M1; first surfaced when M3
+  actually loads `Settings` at runtime.)
+
 ## [0.2.0] — 2026-07-01
 
 **M2 — Wire scanners to `zetryn-trading` shipped.** The bot is now able to
