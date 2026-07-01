@@ -13,3 +13,4 @@ For roadmap progress and milestone status, see
 | Date | Plan | Status |
 |---|---|---|
 | 2026-06-28 | [M1 — Scanner refactor & baseline](2026-06-28-m1-scanner-refactor.md) | Shipped (v0.1.0) |
+| 2026-06-28 | [M2 — Wire scanners to `zetryn-trading`](2026-06-28-m2-wire-zetryn-trading.md) | Shipped (v0.2.0) |

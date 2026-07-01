@@ -7,7 +7,7 @@ build-backend = "hatchling.build"
 
 [project]
 name = "zetryn-bot"
-version = "0.1.0"
+version = "0.2.0"
 description = "Solana memecoin scanner sources and bot scaffolding — the I/O companion to zetryn-trading. Phase 1 scaffolding (scanner sources only)."
 readme = "README.md"
 requires-python = ">=3.11"
@@ -64,6 +64,9 @@ dependencies = [
     "telethon>=1.40",                                           # Telegram channel scraper
     "twitter_login @ git+https://github.com/d60/twitter_login.git",  # Twitter scraper (no pypi)
     "nltk>=3.8",                                                # VADER sentiment for twitter scanner
+
+    # Decision framework — live on PyPI since v1.0.0 (2026-06-28), no git pin needed
+    "zetryn-trading>=1.1.0",
 ]
 
 [project.optional-dependencies]
