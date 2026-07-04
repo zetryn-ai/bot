@@ -18,7 +18,7 @@ appropriately on landing.
 | **M2** | Wire scanners to `zetryn-trading` | ✅ shipped | v0.2.0 | [2026-06-28-m2-wire-zetryn-trading.md](docs/plans/2026-06-28-m2-wire-zetryn-trading.md) |
 | **M3** | Orchestration runtime (`python -m zetryn_bot`) | ✅ shipped | v0.3.0 | [2026-07-01-m3-orchestration-runtime.md](docs/plans/2026-07-01-m3-orchestration-runtime.md) |
 | **M4** | Execution layer (paper-trading: swap engine, position, PnL) | ✅ shipped | v0.4.0 | [2026-07-04-m4-execution-layer.md](docs/plans/2026-07-04-m4-execution-layer.md) |
-| **M5** | Wallet management (encryption, monitor, sweeper) | 📅 planned | v0.5.0 | TBD |
+| **M5** | Wallet management (encrypted keypair, LiveExecutor) | 🚧 in-progress | v0.5.0 | [2026-07-04-m5-wallet-management.md](docs/plans/2026-07-04-m5-wallet-management.md) |
 | **M6** | Persistence (PostgreSQL — DecisionLog, position state) | 📅 planned | v0.6.0 | TBD |
 | **M7** | Observability (Telegram/Discord notifier, heartbeat, crash dump) | 📅 planned | v0.7.0 | TBD |
 | **M8** | Deployment (Dockerfile, compose, systemd, deploy docs) | 📅 planned | v0.8.0 | TBD |
