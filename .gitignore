@@ -42,6 +42,10 @@ gmgn_public_key
 id_ed25519_gmgn*
 id_ed25519
 id_ed25519.pub
+
+# Wallet keyfile (M5) — Fernet-encrypted Solana private key, NEVER commit
+wallet.enc
+*.enc
 *.tar.gz
 
 # Logs

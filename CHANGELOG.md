@@ -5,6 +5,56 @@ All notable changes to `zetryn-bot` will be documented in this file.
 The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and
 the project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.5.0] — 2026-07-04
+
+**M5 — Wallet management (live execution) shipped.** The bot can now sign and
+submit real Solana swaps via a `LiveExecutor` that implements the same
+`Executor` Protocol as M4's `PaperExecutor` — the risk and position layers
+never changed.
+
+### Added
+
+- **`zetryn_bot.wallet.keystore.Wallet`** — loads a Fernet-encrypted keyfile
+  (PBKDF2-derived key from `WALLET_PASSPHRASE`) into an in-memory
+  `solders.Keypair`. `repr()`/`str()` only ever show the public key; the
+  private key never appears in a log, exception message, or version control.
+- **`scripts/wallet_init.py`** — one-time interactive setup (`getpass`, hidden
+  input) that creates the encrypted keyfile. Neither the private key nor the
+  passphrase ever touches disk unencrypted, a log line, or shell history.
+- **`zetryn_bot.execution.rpc.SolanaRpc`** — thin `solana-py` wrapper: submit,
+  confirm, and — critically — check on-chain signature status *before* ever
+  considering a retry. A confirmation timeout is never treated as failure
+  without checking on-chain truth first, which is what prevents double-swaps.
+- **`zetryn_bot.execution.live.LiveExecutor`** — real swaps: Jupiter builds an
+  unsigned transaction for the wallet's pubkey, `solders` signs it locally
+  (<1ms), `SolanaRpc` submits and confirms. A per-mint `asyncio.Lock`
+  serializes concurrent buy/sell calls for the same mint. A `BalanceCache`
+  (TTL-refreshed, not queried inline) guards every buy against insufficient
+  SOL + gas reserve without adding an RPC round-trip to the decision hot path.
+- **`execution.jupiter.JupiterQuote.build_swap_tx`** — extends the M4 quote
+  client with a swap-transaction builder (`lite-api.jup.ag/swap/v1/swap`,
+  verified live). Never signs or sends — only builds.
+- **`EXECUTION_MODE=paper|live`** with layered guards: live activates only
+  when `EXECUTION_ENABLED=true` AND `EXECUTION_MODE=live` AND the wallet
+  keyfile decrypts successfully. Any guard failure logs an error and falls
+  back to paper — never a crash, never a silent live activation. When live is
+  active, a `WARNING`-level banner announces the wallet pubkey and trade cap.
+- **`RiskManager` gains `wallet_max_trade_sol`** — an absolute per-trade cap
+  applied only in live mode, independent of `base_size_sol × confidence`, as
+  a last-resort guard against misconfiguration when real funds are at stake.
+- New deps: `solders`, `solana`, `base58`, `cryptography`.
+- `scripts/m5_smoke.py` + 23 new tests (keystore, balance cache, live executor
+  incl. concurrency + timeout/retry-safety, risk cap). **No real transaction
+  is ever sent in tests or CI** — the live path is only exercised against
+  mocked RPC/Jupiter.
+
+### Note
+
+Our own compute overhead (decision → sign → submit call) is sub-millisecond;
+end-to-end swap latency is dominated by the Jupiter API and Solana
+confirmation time (hundreds of ms to a few seconds), which is outside the
+bot's control — see the M5 design doc for the full latency discussion.
+
 ## [0.4.2] — 2026-07-04
 
 ### Fixed

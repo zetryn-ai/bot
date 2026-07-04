@@ -1,7 +1,7 @@
 # M5 — Wallet Management (live execution)
 
 **Date:** 2026-07-04
-**Status:** Draft
+**Status:** Shipped (v0.5.0)
 **Target version:** v0.5.0
 
 M4 shipped a paper-trading execution engine behind an `Executor` Protocol.

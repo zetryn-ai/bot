@@ -19,10 +19,13 @@ their candidates through a shared queue + worker pool into the pipeline,
 with crash-safe supervision and graceful shutdown. M4 adds a paper-trading
 execution layer: `alert`s are risk-sized into paper positions at real
 Jupiter quote prices, tracked and auto-exited on TP/SL/max-hold (off by
-default via `EXECUTION_ENABLED`). Live swaps + wallet land in later phases
-(see ROADMAP.md).
+default via `EXECUTION_ENABLED`). M5 adds a real Solana wallet — an
+encrypted keypair and a `LiveExecutor` that signs and submits real Jupiter
+swaps, selected via `EXECUTION_MODE=live` behind layered safety guards
+(falls back to paper on any guard failure). Persistence and observability
+land in later phases (see ROADMAP.md).
 """
 
-__version__ = "0.4.2"
+__version__ = "0.5.0"
 
 __all__ = ["__version__"]

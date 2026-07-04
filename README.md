@@ -7,45 +7,57 @@
 to [`zetryn-trading`](https://github.com/zetryn-ai/ai-agent).
 
 > [!WARNING]
-> **v0.3.0 — pre-alpha, M1–M3 shipped.** 6 scanners + 5 enrichers conform
+> **v0.5.0 — pre-alpha, M1–M5 shipped.** 6 scanners + 5 enrichers conform
 > to the `Scanner` / `TokenEnricher` Protocols; a `BotPipeline` wires a
 > candidate through enrichment → adapter → a compiled `zetryn-trading`
-> agent → a swappable `DecisionSink`; and `python -m zetryn_bot` now boots
-> a runtime that runs the enabled scanners concurrently through that
-> pipeline with crash-safe supervision and graceful shutdown. There is
-> **no execution layer yet** — no swap, no wallet, no Redis on the
+> agent → a swappable `DecisionSink`; `python -m zetryn_bot` boots a
+> runtime that runs the enabled scanners concurrently with crash-safe
+> supervision; a paper-trading engine (M4) risk-sizes alerts into
+> positions at real Jupiter prices; and a `LiveExecutor` (M5) can sign and
+> submit real swaps from an encrypted wallet, gated behind
+> `EXECUTION_MODE=live` and layered safety guards. There is **no
+> persistence or observability yet** — no DB, no notifier, no Redis on the
 > decision hot path. Those land in subsequent milestones; see
 > [`ROADMAP.md`](ROADMAP.md).
 
 ## Boundary mirror of zetryn-trading
 
 ```
-zetryn-trading  : decides   (graph + LLM + rules)            ← framework
-zetryn_bot      : executes  (scanners → normalise → publish) ← this repo
-                            (planned: swap, wallet, orchestration)
+zetryn-trading  : decides   (graph + LLM + rules)                     ← framework
+zetryn_bot      : executes  (scanners → normalise → publish → swap)   ← this repo
+                            (planned: persistence, observability, dashboard)
 ```
 
 The framework decides; the bot executes. The framework never holds your
-private key or touches the chain; this repo will own all that I/O.
+private key or touches the chain — this repo owns all wallet/signing I/O.
 
-## What's in here (v0.3.0)
+## What's in here (v0.5.0)
 
 ```
 zetryn_bot/
-├── __init__.py                    __version__ = "0.3.0"
+├── __init__.py                    __version__ = "0.5.0"
 ├── __main__.py                    M3: runtime entry point (python -m zetryn_bot)
 ├── config.py                      Pydantic Settings (scanner + runtime env vars)
 ├── logger_setup.py                Loguru config
 ├── adapters/token_input.py        to_token_input() — pure TokenCandidate -> TokenInput
 ├── pipeline/                      M2: enrich -> adapt -> agent -> sink
 │   ├── enrich.py                  enrich_candidate() — composes TokenEnricher chain
-│   ├── sinks.py                   DecisionSink Protocol + LogSink + ListSink
+│   ├── sinks.py                   DecisionSink Protocol + LogSink/ListSink/TeeSink/ExecutionSink
 │   └── runner.py                  BotPipeline — agent-agnostic runner
 ├── runtime/                       M3: orchestration runtime
 │   ├── orchestrator.py            Orchestrator — queue + worker pool + lifecycle
 │   ├── registry.py                build_enabled_scanners() + build_enrichers()
 │   ├── dedup.py                   DedupCache — collapse duplicate mints (TTL)
 │   └── llm.py                     try_build_llm_client() — optional LLM wiring
+├── execution/                     M4/M5: paper + live execution engine
+│   ├── jupiter.py                 JupiterQuote — quote + swap-tx build
+│   ├── executor.py                Executor Protocol + PaperExecutor (M4)
+│   ├── live.py                    LiveExecutor + BalanceCache (M5, real swaps)
+│   ├── rpc.py                     SolanaRpc — submit/confirm/on-chain-check (M5)
+│   ├── risk.py                    RiskManager — sizing, gates, circuit breaker
+│   └── position.py                PositionTracker — open positions + exit loop
+├── wallet/                        M5: encrypted keypair
+│   └── keystore.py                Wallet — decrypt wallet.enc, no-key-in-log
 ├── scanners/                      6 SOURCES + 9 CLASSES (Scanner Protocol)
 │   ├── protocol.py                Scanner + TokenEnricher Protocols
 │   ├── _common.py                 poll_loop() + fetch_json() helpers
@@ -74,8 +86,8 @@ zetryn_bot/
 - ❌ Redis-backed decision sink / fan-out to a dashboard — M7 / M9
 - ❌ Per-channel agent routing (sniper / graduation) — M10
 - ✅ Execution layer — **paper-trading** (swap engine, position, PnL) — M4 (done)
-- ❌ Live on-chain swaps + wallet — encryption, key management, signing — M5
-- ❌ Persistence — Postgres for `DecisionLog`, position state — M6
+- ✅ Live on-chain swaps + wallet — encrypted keypair, `LiveExecutor` — M5 (done)
+- ❌ Wallet monitoring / multi-wallet rotation / sweeper — future hardening
 - ❌ Persistence — Postgres for `DecisionLog`, position state — M6
 - ❌ Observability — Telegram/Discord notifier, heartbeat, crash dump — M7
 - ❌ API server + dashboard — M9
@@ -130,6 +142,50 @@ Tunables (env / `.env`):
 The runtime runs **rule-only** unless a provider key (`GROQ_API_KEY`,
 `OPENROUTER_API_KEY`, or `GEMINI_API_KEY`) is present — those are resolved by
 `zetryn-trading`, not by the bot's `Settings`.
+
+## Paper-trade alerts (M4)
+
+```bash
+EXECUTION_ENABLED=true python -m zetryn_bot
+```
+
+`alert`s at/above `RISK_MIN_CONFIDENCE` are risk-sized (`RISK_BASE_SIZE_SOL ×
+confidence`) into paper positions at real Jupiter quote prices — no
+transaction, no keypair, no funds. Positions auto-close on `EXIT_TP_PCT` /
+`EXIT_SL_PCT` / `EXIT_MAX_HOLD_S`. See `.env.example` for the full `RISK_*` /
+`EXIT_*` knobs, including `RISK_BUY_ACTIONS=alert,watch` to also paper-trade
+the analyst's watchlist.
+
+## Go live (M5)
+
+**Real funds. Read this before setting `EXECUTION_MODE=live`.**
+
+```bash
+python scripts/wallet_init.py     # one-time: paste your base58 private key,
+                                   # choose a passphrase -> writes wallet.enc
+```
+
+Fund the printed address, set `WALLET_PASSPHRASE` in `.env` (kept separate
+from `wallet.enc`), and a real `SOLANA_RPC_URL` (a bare API key/UUID is not
+enough — e.g. `https://mainnet.helius-rpc.com/?api-key=<key>`). Then:
+
+```bash
+EXECUTION_ENABLED=true EXECUTION_MODE=live python -m zetryn_bot
+```
+
+Live activates **only** when every guard passes: `EXECUTION_ENABLED=true` AND
+`EXECUTION_MODE=live` AND the wallet decrypts successfully. Any failure logs
+an error and falls back to paper — never a crash, never a silent live
+activation. When live is active you'll see a `WARNING`-level banner with the
+wallet pubkey and `WALLET_MAX_TRADE_SOL` (an absolute per-trade cap,
+independent of `RISK_BASE_SIZE_SOL`, as a last-resort guard).
+
+`LiveExecutor` never blind-retries: a confirmation timeout triggers an
+on-chain check before any retry decision, so a slow-but-successful swap is
+never resent. Our own compute overhead (sizing, signing, bookkeeping) is
+sub-millisecond; end-to-end swap time is dominated by the Jupiter API and
+Solana confirmation (hundreds of ms to a few seconds) — outside the bot's
+control.
 
 ## Use individual scanners
 
