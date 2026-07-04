@@ -5,6 +5,23 @@ All notable changes to `zetryn-bot` will be documented in this file.
 The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and
 the project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.3.4] — 2026-07-04
+
+### Added
+
+- **End-to-end observability in the logs.** The runtime now traces the full
+  pipeline so a run is analysable without guessing:
+  - **Fetch** — `poll_loop` logs `fetched N candidate(s)` per scanner (debug),
+    so every polling source's activity is visible.
+  - **Enrich** — the pipeline logs a consolidated post-enrich line (debug) with
+    `source`, liquidity, mcap, volume, holders, top10%, and GMGN
+    safety/smart/kol/sniper/bundler — the full enriched state, not just GMGN.
+  - **Decision** — `LogSink` now shows `source=<scanner[,enrichers]>`, the
+    framework `scores`, and the AI verdict: `ai_score` / `ai_rec` / `ai_reason`
+    when the LLM analyst ran, or `ai=skipped(no-llm-or-hard-gate)` when a
+    candidate was rejected by a hard gate before reaching the LLM (so the
+    absence of an AI score is explained, not silent).
+
 ## [0.3.3] — 2026-07-04
 
 ### Added

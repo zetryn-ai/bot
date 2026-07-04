@@ -51,6 +51,8 @@ async def poll_loop(
         except Exception as exc:
             log.warning(f"poll error: {exc}")
             candidates = []
+        if candidates:
+            log.debug("fetched {} candidate(s)", len(candidates))
         for candidate in candidates:
             yield candidate
         await asyncio.sleep(interval_s)

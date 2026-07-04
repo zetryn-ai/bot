@@ -41,6 +41,22 @@ class BotPipeline:
     async def process(self, candidate: TokenCandidate, session: aiohttp.ClientSession) -> Decision:
         """Enrich, adapt, and run one candidate through the agent; emit + return the Decision."""
         enriched = await enrich_candidate(candidate, self.enrichers, session)
+        log.debug(
+            "enriched source={} mint={} liq=${:,.0f} mcap=${:,.0f} vol1h=${:,.0f} "
+            "holders={} top10={:.0f}% safety={} smart={} kol={} sniper={} bundler={}",
+            ",".join(enriched.sources) or "?",
+            enriched.address,
+            enriched.liquidity_usd,
+            enriched.market_cap_usd,
+            enriched.volume_1h_usd,
+            enriched.holder_count,
+            enriched.top10_holder_pct,
+            enriched.gmgn_safety_score,
+            enriched.gmgn_smart_wallets,
+            enriched.gmgn_kol_wallets,
+            enriched.gmgn_sniper_wallets,
+            enriched.gmgn_bundler_wallets,
+        )
 
         try:
             context = TradingContext(token=to_token_input(enriched), config=self.config)
