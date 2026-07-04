@@ -1,7 +1,7 @@
 # M4 — Execution Layer (paper-trading first)
 
 **Date:** 2026-07-04
-**Status:** Draft
+**Status:** Shipped (v0.4.0)
 **Target version:** v0.4.0
 
 M3 produces `Decision`s from the LLM analyst but only logs them. M4 closes the

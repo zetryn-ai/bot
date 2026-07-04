@@ -72,9 +72,10 @@ zetryn_bot/
 ## What's NOT here yet (see [ROADMAP.md](ROADMAP.md))
 
 - ❌ Redis-backed decision sink / fan-out to a dashboard — M7 / M9
-- ❌ Per-channel agent routing (sniper / graduation) — future milestone
-- ❌ Execution layer — swap (Jupiter), position manager, reconciliation — M4
-- ❌ Wallet — encryption, key management, monitor, sweeper — M5
+- ❌ Per-channel agent routing (sniper / graduation) — M10
+- ✅ Execution layer — **paper-trading** (swap engine, position, PnL) — M4 (done)
+- ❌ Live on-chain swaps + wallet — encryption, key management, signing — M5
+- ❌ Persistence — Postgres for `DecisionLog`, position state — M6
 - ❌ Persistence — Postgres for `DecisionLog`, position state — M6
 - ❌ Observability — Telegram/Discord notifier, heartbeat, crash dump — M7
 - ❌ API server + dashboard — M9

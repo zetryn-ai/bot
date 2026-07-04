@@ -5,6 +5,40 @@ All notable changes to `zetryn-bot` will be documented in this file.
 The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and
 the project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.4.0] — 2026-07-04
+
+**M4 — Execution layer (paper-trading) shipped.** The bot can now act on its
+own alerts: `python -m zetryn_bot` with `EXECUTION_ENABLED=true` opens paper
+positions at real Jupiter quote prices, tracks them, and auto-exits on
+take-profit / stop-loss / max-hold — recording PnL. No transactions, no
+keypair, no funds; live swaps land with M5.
+
+### Added
+
+- **`zetryn_bot.execution`** package:
+  - `jupiter.JupiterQuote` — read-only Jupiter quote client (current
+    `lite-api.jup.ag/swap/v1` host; the legacy `quote-api.jup.ag/v6` is dead).
+  - `executor.PaperExecutor` (+ `Executor` Protocol, `SwapRequest`, `Position`,
+    `ClosedTrade`) — simulated fills at real quote prices, denominated in SOL so
+    token decimals never need resolving. A `LiveExecutor` slots in at M5.
+  - `risk.RiskManager` — buys on `alert` at/above a confidence floor, sizes
+    `base_size_sol × confidence`, caps concurrent positions, and trips a
+    daily-loss circuit breaker.
+  - `position.PositionTracker` — in-memory open positions + a supervised monitor
+    loop that polls Jupiter per position and exits on TP/SL/max-hold; periodic
+    win-rate / PnL stats.
+- **`ExecutionSink` + `TeeSink`** — execution plugs in as a `DecisionSink`
+  behind a tee (log + execute); `BotPipeline` / `Orchestrator` unchanged. The
+  orchestrator gained a `background_tasks` hook for the monitor loop.
+- New `Settings`: `EXECUTION_ENABLED` (default false), `RISK_BASE_SIZE_SOL`,
+  `RISK_MIN_CONFIDENCE`, `RISK_MAX_POSITIONS`, `RISK_DAILY_LOSS_LIMIT_SOL`,
+  `EXIT_TP_PCT`, `EXIT_SL_PCT`, `EXIT_MAX_HOLD_S`, `EXEC_POLL_INTERVAL_S`.
+- `scripts/m4_smoke.py` + 4 new test files (risk, paper executor, position
+  tracker, execution sink). CI runs the m4 smoke.
+
+With `EXECUTION_ENABLED=false` (the default) the runtime is byte-for-byte the
+M3 behaviour.
+
 ## [0.3.6] — 2026-07-04
 
 **The AI analyst path now works end to end.**

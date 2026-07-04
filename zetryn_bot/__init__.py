@@ -16,10 +16,13 @@ to `zetryn-trading`: an adapter bridging `TokenCandidate` -> `TokenInput`,
 an enrichment pipeline, and a `BotPipeline` runner. M3 adds the runtime:
 `python -m zetryn_bot` boots the enabled scanners concurrently and fans
 their candidates through a shared queue + worker pool into the pipeline,
-with crash-safe supervision and graceful shutdown. Swap execution and
-wallet land in subsequent phases (see ROADMAP.md).
+with crash-safe supervision and graceful shutdown. M4 adds a paper-trading
+execution layer: `alert`s are risk-sized into paper positions at real
+Jupiter quote prices, tracked and auto-exited on TP/SL/max-hold (off by
+default via `EXECUTION_ENABLED`). Live swaps + wallet land in later phases
+(see ROADMAP.md).
 """
 
-__version__ = "0.3.6"
+__version__ = "0.4.0"
 
 __all__ = ["__version__"]

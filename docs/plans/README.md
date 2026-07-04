@@ -15,4 +15,4 @@ For roadmap progress and milestone status, see
 | 2026-06-28 | [M1 — Scanner refactor & baseline](2026-06-28-m1-scanner-refactor.md) | Shipped (v0.1.0) |
 | 2026-06-28 | [M2 — Wire scanners to `zetryn-trading`](2026-06-28-m2-wire-zetryn-trading.md) | Shipped (v0.2.0) |
 | 2026-07-01 | [M3 — Orchestration runtime](2026-07-01-m3-orchestration-runtime.md) | Shipped (v0.3.0) |
-| 2026-07-04 | [M4 — Execution layer (paper-trading)](2026-07-04-m4-execution-layer.md) | Draft |
+| 2026-07-04 | [M4 — Execution layer (paper-trading)](2026-07-04-m4-execution-layer.md) | Shipped (v0.4.0) |
