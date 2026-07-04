@@ -102,6 +102,18 @@ class Settings(BaseSettings):
     exit_max_hold_s: float = 1800.0  # force-close after 30 min
     exec_poll_interval_s: float = 5.0  # position monitor poll cadence
 
+    # ── Wallet + live execution (M5) ─────────────────────────────────────────
+    # execution_mode selects the Executor when execution_enabled=True.
+    # "live" additionally requires the wallet keyfile to decrypt successfully —
+    # any failure falls back to paper (logged loudly), never crashes.
+    execution_mode: str = "paper"  # "paper" | "live"
+    wallet_keyfile_path: str = "wallet.enc"
+    wallet_passphrase: str = ""  # env only — never defaulted, never logged
+    wallet_min_sol_reserve: float = 0.05  # gas reserve, never spent on trades
+    wallet_max_trade_sol: float = 0.5  # absolute per-trade cap for live, independent of risk sizing
+    live_slippage_bps: int = 200
+    live_priority_fee_lamports: int | None = None  # None = Jupiter auto
+
     # ── Logging ─────────────────────────────────────────────────────────────
     log_level: str = "INFO"
     log_file: str = ""

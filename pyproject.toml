@@ -67,6 +67,12 @@ dependencies = [
 
     # Decision framework — live on PyPI since v1.0.0 (2026-06-28), no git pin needed
     "zetryn-trading>=1.1.0",
+
+    # Wallet + live execution (M5)
+    "solders>=0.21",            # Keypair, VersionedTransaction (Rust bindings, sign locally)
+    "solana>=0.34",             # AsyncClient — RPC submission + confirmation
+    "base58>=2.1",
+    "cryptography>=42.0",       # Fernet — encrypted keyfile at rest
 ]
 
 [project.optional-dependencies]
