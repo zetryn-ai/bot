@@ -72,6 +72,19 @@ class Settings(BaseSettings):
     queue_size: int = 1000  # candidate queue maxsize (backpressure bound)
     dedup_ttl_s: float = 60.0  # window for collapsing duplicate mints
 
+    # ── Decision gate thresholds ────────────────────────────────────────────
+    # These feed the framework's ScannerConfig, which the three hard gates
+    # (safety / intel / market) check BEFORE the LLM analyst runs. Defaults
+    # match the framework. Loosen them (e.g. max_top10_pct=1.0,
+    # max_bundler_wallets=100000, min_liquidity_usd=0) to let more candidates
+    # survive the gates and reach the LLM — useful for exercising the AI path.
+    gate_min_liquidity_usd: float = 5_000
+    gate_min_volume_1h: float = 10_000
+    gate_max_top10_pct: float = 0.5  # 0..1 top-10 holder concentration ceiling
+    gate_min_holders: int = 50
+    gate_max_bundler_wallets: int = 3
+    gate_min_gmgn_safety_score: float = 40.0  # 0..100
+
     # ── Logging ─────────────────────────────────────────────────────────────
     log_level: str = "INFO"
     log_file: str = ""

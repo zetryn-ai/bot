@@ -22,7 +22,6 @@ from zetryn.llm import (
     GROQ_BASE_URL,
     OPENROUTER_BASE_URL,
     LLMClient,
-    LLMError,
     OpenAICompatibleClient,
     ProviderConfig,
 )
@@ -54,6 +53,22 @@ _CANDIDATES: list[ProviderConfig] = [
 ]
 
 
+def _env_keys(names: list[str]) -> list[str]:
+    """Return the comma-split keys from the first set env var in ``names``.
+
+    The bot's convention (mirroring scanner keys) is a comma-separated list in a
+    single env var. The framework's own resolver reads the whole value as ONE
+    key, so a multi-key ``GROQ_API_KEY`` would be sent as a single invalid
+    Bearer token. Splitting here and passing literal keys lets the framework's
+    KeyPool rotate over them correctly.
+    """
+    for name in names:
+        raw = os.environ.get(name, "").strip()
+        if raw:
+            return [k.strip() for k in raw.split(",") if k.strip()]
+    return []
+
+
 def try_build_llm_client() -> LLMClient | None:
     """Build an LLM client from the first configured provider, or ``None``.
 
@@ -63,15 +78,20 @@ def try_build_llm_client() -> LLMClient | None:
     """
     model_override = os.environ.get("LLM_MODEL", "").strip()
     for config in _CANDIDATES:
-        try:
-            # build_key_pool -> resolve_keys raises LLMError when no key is set;
-            # this is our presence check without the bot reading the key value.
-            config.build_key_pool()
-        except LLMError:
+        keys = _env_keys(config.key_envs)
+        if not keys:
             continue
+        # Literal keys win over key_envs in the framework's resolver AND are
+        # already comma-split, so the KeyPool rotates over all of them.
+        config.keys = keys
         if model_override:
             config.model = model_override
-        log.info("LLM client built — provider={} model={}", config.name, config.model)
+        log.info(
+            "LLM client built — provider={} model={} keys={}",
+            config.name,
+            config.model,
+            len(keys),
+        )
         return OpenAICompatibleClient(config)
 
     log.info("no LLM provider key found — running rule-only (llm_client=None)")

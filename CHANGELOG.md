@@ -5,6 +5,32 @@ All notable changes to `zetryn-bot` will be documented in this file.
 The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and
 the project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.3.6] — 2026-07-04
+
+**The AI analyst path now works end to end.**
+
+### Fixed
+
+- **Multi-key `GROQ_API_KEY` (and other providers) were sent as a single
+  invalid key.** The bot's convention is a comma-separated key list in one env
+  var, but the framework's resolver reads the whole value as ONE key — so a
+  17-key `GROQ_API_KEY` was sent as one giant Bearer token and every LLM call
+  failed with `401 Invalid API Key`, silently falling back to a conservative
+  rule-only "skip". `try_build_llm_client` now comma-splits the env value and
+  passes literal keys, so the framework's KeyPool rotates over all of them.
+  With this fixed, the analyst produces real `alert` / `watch` / `skip`
+  verdicts with per-aspect scores and reasoning.
+
+### Added
+
+- **Decision gate thresholds are now configurable via env** (`GATE_MIN_LIQUIDITY_USD`,
+  `GATE_MIN_VOLUME_1H`, `GATE_MAX_TOP10_PCT`, `GATE_MIN_HOLDERS`,
+  `GATE_MAX_BUNDLER_WALLETS`, `GATE_MIN_GMGN_SAFETY_SCORE`). They feed the
+  framework `ScannerConfig` that the hard gates check before the LLM. Defaults
+  match the framework; loosen them to let more candidates reach the analyst.
+  `min_liquidity_usd` / `min_volume_1h` are floored at 1 to avoid a
+  division-by-zero in the framework's market gate when set to 0.
+
 ## [0.3.5] — 2026-07-04
 
 **All discovery sources working: Raydium fixed, Twitter + Telegram wired.**

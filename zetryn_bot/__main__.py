@@ -40,6 +40,7 @@ async def build_orchestrator(settings: Settings) -> Orchestrator:
     # build_scanner is imported lazily so importing this module (e.g. for the
     # console-script entry point) doesn't pull the framework graph eagerly.
     from strategies.agents.scanner import build_scanner
+    from trading.schemas import ScannerConfig
 
     llm = try_build_llm_client()
     agent = build_scanner(llm_client=llm)
@@ -49,7 +50,18 @@ async def build_orchestrator(settings: Settings) -> Orchestrator:
     if twitter is not None:
         enrichers.append(twitter)  # last: runs once symbol is known
 
-    pipeline = BotPipeline(agent, enrichers=enrichers, sink=LogSink())
+    # Gate thresholds from Settings feed the hard gates that run before the LLM.
+    config = ScannerConfig(
+        # Floor at 1: the framework's market_gate divides by these * 5, so a
+        # literal 0 would crash it. 1 is effectively "no minimum" and safe.
+        min_liquidity_usd=max(1.0, settings.gate_min_liquidity_usd),
+        min_volume_1h=max(1.0, settings.gate_min_volume_1h),
+        max_top10_pct=settings.gate_max_top10_pct,
+        min_holders=settings.gate_min_holders,
+        max_bundler_wallets=settings.gate_max_bundler_wallets,
+        min_gmgn_safety_score=settings.gate_min_gmgn_safety_score,
+    )
+    pipeline = BotPipeline(agent, enrichers=enrichers, sink=LogSink(), config=config)
     return Orchestrator(
         pipeline,
         build_enabled_scanners(settings),
