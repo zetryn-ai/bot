@@ -85,6 +85,19 @@ class Settings(BaseSettings):
     gate_max_bundler_wallets: int = 3
     gate_min_gmgn_safety_score: float = 40.0  # 0..100
 
+    # ── Execution layer (M4 — paper trading) ────────────────────────────────
+    # Off by default: with execution_enabled=False the runtime is identical to
+    # M3 (LogSink only, no positions). Turn on to paper-trade alerts.
+    execution_enabled: bool = False
+    risk_base_size_sol: float = 0.1  # base position size; actual = base x confidence
+    risk_min_confidence: float = 0.6  # only alerts at/above this confidence buy
+    risk_max_positions: int = 5  # max concurrent open positions
+    risk_daily_loss_limit_sol: float = 1.0  # circuit breaker: stop buying past this daily loss
+    exit_tp_pct: float = 0.30  # take profit at +30%
+    exit_sl_pct: float = 0.15  # stop loss at -15%
+    exit_max_hold_s: float = 1800.0  # force-close after 30 min
+    exec_poll_interval_s: float = 5.0  # position monitor poll cadence
+
     # ── Logging ─────────────────────────────────────────────────────────────
     log_level: str = "INFO"
     log_file: str = ""
