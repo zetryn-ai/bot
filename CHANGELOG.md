@@ -5,6 +5,15 @@ All notable changes to `zetryn-bot` will be documented in this file.
 The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and
 the project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.3.3] — 2026-07-04
+
+### Added
+
+- **GMGN enricher logs a debug line on successful enrichment** (`safety`,
+  `smart`, `kol`, `sniper`, `holders`) so a working GMGN key is observable in
+  the runtime logs — previously success was silent and indistinguishable from
+  a disabled enricher. Run with `LOG_LEVEL=DEBUG` to see it.
+
 ## [0.3.2] — 2026-07-04
 
 ### Fixed

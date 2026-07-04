@@ -86,7 +86,19 @@ class GmgnEnricher:
             return candidate
         security = await self._fetch_security(mint)
 
-        return _apply(candidate, info, security)
+        enriched = _apply(candidate, info, security)
+        # Positive confirmation that GMGN applied data — otherwise a working
+        # enricher is silent and indistinguishable from a disabled one in logs.
+        self._log.debug(
+            "enriched {} — safety={} smart={} kol={} sniper={} holders={}",
+            mint,
+            enriched.gmgn_safety_score,
+            enriched.gmgn_smart_wallets,
+            enriched.gmgn_kol_wallets,
+            enriched.gmgn_sniper_wallets,
+            enriched.holder_count,
+        )
+        return enriched
 
     async def _fetch_token_info(self, mint: str) -> dict | None:
         data = await self._get("/v1/token/info", {"chain": "sol", "address": mint})
