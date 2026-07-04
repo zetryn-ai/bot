@@ -13,6 +13,7 @@ from __future__ import annotations
 import asyncio
 import signal
 
+from dotenv import load_dotenv
 from loguru import logger
 
 from zetryn_bot.config import Settings
@@ -70,6 +71,14 @@ async def _run(settings: Settings) -> None:
 
 
 def main() -> int:
+    # Load .env into the process environment BEFORE anything else. Pydantic
+    # reads .env into Settings on its own, but the framework's LLM provider
+    # resolver reads os.environ directly — without this, LLM keys placed in
+    # .env are invisible to zetryn-trading and the runtime silently stays
+    # rule-only. Loading here keeps the boundary intact: the bot only makes
+    # the shared file visible; the framework still owns which vars it reads.
+    load_dotenv()
+
     settings = Settings()
     setup_logger(settings.log_level, settings.log_file)
     try:

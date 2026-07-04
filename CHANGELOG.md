@@ -5,6 +5,18 @@ All notable changes to `zetryn-bot` will be documented in this file.
 The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and
 the project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.3.1] — 2026-07-04
+
+### Fixed
+
+- **LLM keys in `.env` are now visible to the framework.** `__main__` calls
+  `load_dotenv()` at startup so provider keys (`GROQ_API_KEY`, etc.) placed in
+  `.env` reach `os.environ`, where `zetryn-trading`'s provider resolver reads
+  them. Before this, the runtime loaded `.env` only into the bot's `Settings`
+  (which has no LLM fields), so LLM keys in `.env` were silently ignored and
+  the runtime always stayed rule-only. The LLM path now activates as
+  documented when a provider key is present.
+
 ## [0.3.0] — 2026-07-02
 
 **M3 — Orchestration runtime shipped.** The bot now has a runnable entry
