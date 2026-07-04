@@ -253,7 +253,7 @@ class TwitterAccountPool:
                 # validate_cookies=False so a stale auth_token doesn't blow
                 # up startup; the runtime call surfaces auth errors when
                 # they actually matter.
-                client.load_cookies(cookies, validate_cookies=False)
+                await client.load_cookies(cookies, validate_cookies=False)
                 self._clients.append(client)
                 self._log.info(f"loaded {fname} ({len(cookies)} cookies)")
             except Exception as exc:
@@ -408,7 +408,7 @@ async def _fetch_twitter_social(pool: TwitterAccountPool, symbol: str, address: 
             break  # All accounts cooled — return whatever we have.
         try:
             count = 40 if len(queries) == 1 else 25
-            result = await client.search(query, product=SearchTimelineProduct.LIVE, count=count)
+            result = await client.search(query, product=SearchTimelineProduct.LATEST, count=count)
             for tweet in result:
                 tid = getattr(tweet, "id", None) or getattr(tweet, "rest_id", None)
                 if tid is not None:

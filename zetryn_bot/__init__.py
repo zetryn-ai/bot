@@ -20,6 +20,6 @@ with crash-safe supervision and graceful shutdown. Swap execution and
 wallet land in subsequent phases (see ROADMAP.md).
 """
 
-__version__ = "0.3.4"
+__version__ = "0.3.5"
 
 __all__ = ["__version__"]

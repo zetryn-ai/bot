@@ -25,6 +25,10 @@ from zetryn_bot.scanners.enrichers.gmgn_openapi import GmgnEnricher
 from zetryn_bot.scanners.enrichers.helius import HeliusEnricher
 from zetryn_bot.scanners.enrichers.jupiter import JupiterEnricher
 from zetryn_bot.scanners.enrichers.rugcheck import RugcheckEnricher
+from zetryn_bot.scanners.enrichers.twitter import (
+    TwitterEnricher,
+    build_twitter_pool_from_config,
+)
 from zetryn_bot.scanners.geckoterminal import (
     GeckoTerminalNewPools,
     GeckoTerminalTrending,
@@ -118,3 +122,28 @@ def build_enrichers(settings: Settings) -> list[TokenEnricher]:
 
     log.info("enabled enrichers: {}", [e.name for e in enrichers])
     return enrichers
+
+
+async def build_twitter_enricher(settings: Settings) -> TwitterEnricher | None:
+    """Build + initialize the Twitter enricher, or ``None`` if unavailable.
+
+    Kept separate from :func:`build_enrichers` (which is synchronous) because the
+    ``TwitterAccountPool`` needs an ``await pool.initialize()`` to load cookie
+    files. Returns ``None`` — with a warning — when no cookie store is configured
+    or initialization fails, so a missing/broken Twitter setup never blocks the
+    rest of the pipeline. Ordered last by the caller (runs once symbol is known).
+    """
+    pool = build_twitter_pool_from_config(settings)
+    if pool is None:
+        log.warning(
+            "twitter enricher skipped — no account_*.json in {}",
+            settings.twitter_cookies_path,
+        )
+        return None
+    try:
+        await pool.initialize()
+    except Exception as exc:
+        log.warning("twitter enricher skipped — pool init failed: {}", exc)
+        return None
+    log.info("twitter enricher enabled")
+    return TwitterEnricher(pool)

@@ -22,24 +22,34 @@ from zetryn_bot.pipeline.runner import BotPipeline
 from zetryn_bot.pipeline.sinks import LogSink
 from zetryn_bot.runtime.llm import try_build_llm_client
 from zetryn_bot.runtime.orchestrator import Orchestrator
-from zetryn_bot.runtime.registry import build_enabled_scanners, build_enrichers
+from zetryn_bot.runtime.registry import (
+    build_enabled_scanners,
+    build_enrichers,
+    build_twitter_enricher,
+)
 
 log = logger.bind(component="runtime.main")
 
 
-def build_orchestrator(settings: Settings) -> Orchestrator:
-    """Assemble the full runtime graph from ``settings`` (no I/O yet)."""
+async def build_orchestrator(settings: Settings) -> Orchestrator:
+    """Assemble the full runtime graph from ``settings``.
+
+    Async because the Twitter enricher needs an ``await pool.initialize()`` to
+    load its cookie store; everything else is constructed synchronously.
+    """
     # build_scanner is imported lazily so importing this module (e.g. for the
     # console-script entry point) doesn't pull the framework graph eagerly.
     from strategies.agents.scanner import build_scanner
 
     llm = try_build_llm_client()
     agent = build_scanner(llm_client=llm)
-    pipeline = BotPipeline(
-        agent,
-        enrichers=build_enrichers(settings),
-        sink=LogSink(),
-    )
+
+    enrichers = build_enrichers(settings)
+    twitter = await build_twitter_enricher(settings)
+    if twitter is not None:
+        enrichers.append(twitter)  # last: runs once symbol is known
+
+    pipeline = BotPipeline(agent, enrichers=enrichers, sink=LogSink())
     return Orchestrator(
         pipeline,
         build_enabled_scanners(settings),
@@ -50,7 +60,7 @@ def build_orchestrator(settings: Settings) -> Orchestrator:
 
 
 async def _run(settings: Settings) -> None:
-    orch = build_orchestrator(settings)
+    orch = await build_orchestrator(settings)
 
     stop = asyncio.Event()
     loop = asyncio.get_running_loop()

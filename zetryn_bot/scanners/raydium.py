@@ -6,6 +6,14 @@ Mechanism: REST polling every 15s for recently created pools.
 Rate limits: Not formally published; conservative cadence used.
 Emits: TokenCandidate via Scanner.stream(). Caller decides the sink.
 
+Endpoint note: ``/pools/info/list`` has NO creation-time sort field
+(``openTime``/``createTime`` return HTTP 500). Its valid sort fields are all
+liquidity/volume based, which surface old blue-chip pools. To reach genuinely
+new pools we query ``poolType=standard`` (AMM, where memecoins launch — CLMM
+is blue-chip) sorted by ``apr24h`` desc: new low-liquidity pools carry the
+highest fee/liquidity APR, so this reliably surfaces fresh pools (verified:
+~65 of 100 under 24h vs 0 with the old ``default`` sort).
+
 Filters at the scanner level:
 - Only base tokens that are NOT SOL or USDC are yielded.
 - Pools older than 24 hours are skipped (this is a *new pools* scanner).
@@ -36,15 +44,17 @@ class RaydiumNewPools:
 
     name = "raydium.new_pools"
 
-    def __init__(self, poll_interval_s: float = 15.0, page_size: int = 50) -> None:
+    def __init__(self, poll_interval_s: float = 15.0, page_size: int = 100) -> None:
         self._poll_interval_s = poll_interval_s
         self._page_size = page_size
 
     async def stream(self, session: aiohttp.ClientSession) -> AsyncIterator[TokenCandidate]:
         url = f"{RAYDIUM_API}/pools/info/list"
         params: dict[str, str | int] = {
-            "poolType": "all",
-            "poolSortField": "default",
+            # standard AMM (memecoin launches) sorted by APR desc surfaces new,
+            # low-liquidity pools; there is no creation-time sort on this API.
+            "poolType": "standard",
+            "poolSortField": "apr24h",
             "sortType": "desc",
             "pageSize": self._page_size,
             "page": 1,

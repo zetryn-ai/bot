@@ -116,10 +116,23 @@ class TelegramScanner:
             return
 
         client = TelegramClient(self._session_path, self._api_id, self._api_hash)
+        # Connect + verify an EXISTING authorized session. Never call
+        # client.start(): without a session it prompts for phone/OTP on stdin,
+        # which blocks the whole runtime (a background task stuck in input()
+        # stalls the event loop and even SIGTERM can't drain). Interactive login
+        # is a separate one-time step — see scripts/telegram_login.py.
         try:
-            await client.start(phone=self._phone or None)
+            await client.connect()
         except Exception as exc:
-            self._log.error(f"login failed: {exc} — scanner disabled")
+            self._log.error(f"connect failed: {exc} — scanner disabled")
+            return
+        if not await client.is_user_authorized():
+            self._log.error(
+                "no authorized session at {}.session — run "
+                "`python scripts/telegram_login.py` once; scanner disabled",
+                self._session_path,
+            )
+            await client.disconnect()
             return
 
         channel_map = await self._resolve_channels(client)

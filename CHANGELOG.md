@@ -5,6 +5,41 @@ All notable changes to `zetryn-bot` will be documented in this file.
 The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and
 the project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.3.5] — 2026-07-04
+
+**All discovery sources working: Raydium fixed, Twitter + Telegram wired.**
+
+### Fixed
+
+- **Raydium new-pool scanner produced 0 candidates.** `/pools/info/list` has no
+  creation-time sort (`openTime`/`createTime` → HTTP 500), and the old
+  `poolType=all` + `poolSortField=default` returned ~1.6-year-old blue-chip
+  pools that the 24h age filter dropped. Switched to `poolType=standard` +
+  `poolSortField=apr24h` (new low-liquidity pools carry the highest APR),
+  which surfaces genuinely fresh pools (0 → ~60–130 candidates per poll).
+- **Twitter enricher was broken by `twitter_login` API drift.**
+  `Client.load_cookies` is now a coroutine (must be awaited — it was silently
+  never awaited, so cookies never loaded) and `SearchTimelineProduct.LIVE` was
+  renamed `LATEST`. Both fixed; Twitter now populates mentions / sentiment /
+  engagement / velocity again.
+- **Telegram scanner could hang the entire runtime.** It called
+  `client.start()`, which prompts for phone/OTP on stdin when no session
+  exists — a background task stuck in `input()` stalled the event loop so even
+  SIGTERM couldn't drain. It now `connect()`s and checks
+  `is_user_authorized()`, disabling itself with a clear message when no session
+  is present instead of prompting.
+
+### Added
+
+- **`scripts/telegram_login.py`** — one-time interactive Telegram login that
+  creates the Telethon `.session` file. Phone / OTP / password are entered at
+  the terminal and never touch the runtime logs; the runtime then reuses the
+  session with no credentials.
+- **Twitter enricher is now wired into the runtime.** `build_twitter_enricher`
+  (async) loads + initializes the cookie-backed account pool and appends the
+  enricher last (runs once a symbol is known); it is skipped with a warning
+  when no cookie store is configured, never blocking the pipeline.
+
 ## [0.3.4] — 2026-07-04
 
 ### Added
