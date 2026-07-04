@@ -125,3 +125,13 @@ class Settings(BaseSettings):
     @classmethod
     def _csv_to_list(cls, v):
         return _parse_csv(v)
+
+    # Empty-string env value for an optional int → None (operators leave
+    # LIVE_PRIORITY_FEE_LAMPORTS= blank to mean "Jupiter auto"; a blank env var
+    # arrives as "" which int-parsing would otherwise reject).
+    @field_validator("live_priority_fee_lamports", mode="before")
+    @classmethod
+    def _empty_to_none(cls, v):
+        if isinstance(v, str) and v.strip() == "":
+            return None
+        return v

@@ -5,6 +5,19 @@ All notable changes to `zetryn-bot` will be documented in this file.
 The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and
 the project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.5.1] — 2026-07-04
+
+### Fixed
+
+- **Blank `LIVE_PRIORITY_FEE_LAMPORTS=` in `.env` crashed Settings.** An empty
+  optional-int env var arrives as `""`, which int-parsing rejected — so copying
+  `.env.example` (where it's blank by default, meaning "Jupiter auto") would
+  crash startup. A `before` validator now maps a blank string to `None`.
+- **`.env.example` had inline comments on blank-value lines** (`WALLET_PASSPHRASE=`,
+  `LIVE_PRIORITY_FEE_LAMPORTS=`) — python-dotenv treats the comment as the value
+  on a blank line, so `WALLET_PASSPHRASE` silently became the comment text.
+  Comments moved to their own lines. Regression tests added.
+
 ## [0.5.0] — 2026-07-04
 
 **M5 — Wallet management (live execution) shipped.** The bot can now sign and

@@ -26,6 +26,6 @@ swaps, selected via `EXECUTION_MODE=live` behind layered safety guards
 land in later phases (see ROADMAP.md).
 """
 
-__version__ = "0.5.0"
+__version__ = "0.5.1"
 
 __all__ = ["__version__"]
