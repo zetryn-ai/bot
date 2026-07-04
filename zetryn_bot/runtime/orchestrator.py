@@ -10,6 +10,7 @@ concurrency (and thus LLM calls) at the worker count.
 from __future__ import annotations
 
 import asyncio
+from collections.abc import Awaitable, Callable
 
 import aiohttp
 from loguru import logger
@@ -34,10 +35,14 @@ class Orchestrator:
         workers: int = 4,
         queue_size: int = 1000,
         dedup_ttl_s: float = 60.0,
+        background_tasks: list[tuple[str, Callable[[], Awaitable[None]]]] | None = None,
     ) -> None:
         self.pipeline = pipeline
         self.scanners = scanners
         self._workers = workers
+        # (name, coro-fn) pairs run as supervised tasks alongside producers/workers
+        # — e.g. the M4 position monitor loop. Each is crash-restarted like a scanner.
+        self._background_tasks = background_tasks or []
         self.queue: asyncio.Queue[TokenCandidate] = asyncio.Queue(maxsize=queue_size)
         self.dedup = DedupCache(ttl_s=dedup_ttl_s)
         self.session: aiohttp.ClientSession | None = None
@@ -75,11 +80,16 @@ class Orchestrator:
             asyncio.create_task(self._consume(self.session), name=f"worker:{i}")
             for i in range(self._workers)
         ]
-        self._tasks = producers + consumers
+        background = [
+            asyncio.create_task(supervise(name, coro_fn), name=f"bg:{name}")
+            for name, coro_fn in self._background_tasks
+        ]
+        self._tasks = producers + consumers + background
         log.info(
-            "orchestrator started — {} producer(s), {} worker(s)",
+            "orchestrator started — {} producer(s), {} worker(s), {} background",
             len(producers),
             len(consumers),
+            len(background),
         )
 
     async def drain(self) -> None:

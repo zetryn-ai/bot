@@ -66,3 +66,44 @@ class ListSink:
 
     async def emit(self, candidate: TokenCandidate, decision: Decision) -> None:
         self.decisions.append((candidate, decision))
+
+
+class TeeSink:
+    """Fan one decision out to several sinks, isolating per-sink errors.
+
+    Used in M4 so decisions are both logged (LogSink) and executed
+    (ExecutionSink) — one sink failing must not stop the others.
+    """
+
+    def __init__(self, sinks: list[DecisionSink]) -> None:
+        self._sinks = sinks
+
+    async def emit(self, candidate: TokenCandidate, decision: Decision) -> None:
+        for sink in self._sinks:
+            try:
+                await sink.emit(candidate, decision)
+            except Exception:
+                log.exception("sink {} failed", type(sink).__name__)
+
+
+class ExecutionSink:
+    """M4: route an ``alert`` through RiskManager → Executor → PositionTracker.
+
+    Non-alert decisions and gate rejects are no-ops here (LogSink already
+    records them). Skips a mint already held so we never stack positions.
+    """
+
+    def __init__(self, risk, executor, tracker) -> None:
+        self._risk = risk
+        self._executor = executor
+        self._tracker = tracker
+
+    async def emit(self, candidate: TokenCandidate, decision: Decision) -> None:
+        if self._tracker.holds(candidate.address):
+            return
+        req = self._risk.evaluate(candidate, decision, self._tracker.open_count())
+        if req is None:
+            return
+        position = await self._executor.buy(req)
+        if position is not None:
+            await self._tracker.add(position)

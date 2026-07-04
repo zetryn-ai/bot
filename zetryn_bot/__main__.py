@@ -19,7 +19,7 @@ from loguru import logger
 from zetryn_bot.config import Settings
 from zetryn_bot.logger_setup import setup_logger
 from zetryn_bot.pipeline.runner import BotPipeline
-from zetryn_bot.pipeline.sinks import LogSink
+from zetryn_bot.pipeline.sinks import ExecutionSink, LogSink, TeeSink
 from zetryn_bot.runtime.llm import try_build_llm_client
 from zetryn_bot.runtime.orchestrator import Orchestrator
 from zetryn_bot.runtime.registry import (
@@ -61,13 +61,44 @@ async def build_orchestrator(settings: Settings) -> Orchestrator:
         max_bundler_wallets=settings.gate_max_bundler_wallets,
         min_gmgn_safety_score=settings.gate_min_gmgn_safety_score,
     )
-    pipeline = BotPipeline(agent, enrichers=enrichers, sink=LogSink(), config=config)
+    # Sink: LogSink always; add the paper-trading ExecutionSink (behind a
+    # TeeSink) + its position monitor loop only when execution is enabled.
+    sink = LogSink()
+    background_tasks: list = []
+    if settings.execution_enabled:
+        from zetryn_bot.execution.executor import PaperExecutor
+        from zetryn_bot.execution.jupiter import JupiterQuote
+        from zetryn_bot.execution.position import PositionTracker
+        from zetryn_bot.execution.risk import RiskConfig, RiskManager
+
+        jupiter = JupiterQuote()
+        risk = RiskManager(
+            RiskConfig(
+                base_size_sol=settings.risk_base_size_sol,
+                min_confidence=settings.risk_min_confidence,
+                max_positions=settings.risk_max_positions,
+                daily_loss_limit_sol=settings.risk_daily_loss_limit_sol,
+                take_profit_pct=settings.exit_tp_pct,
+                stop_loss_pct=settings.exit_sl_pct,
+                max_hold_s=settings.exit_max_hold_s,
+            )
+        )
+        executor = PaperExecutor(jupiter)
+        tracker = PositionTracker(
+            executor, jupiter, risk, poll_interval_s=settings.exec_poll_interval_s
+        )
+        sink = TeeSink([LogSink(), ExecutionSink(risk, executor, tracker)])
+        background_tasks.append(("execution.monitor", tracker.monitor_loop))
+        log.info("execution ENABLED (paper) — base_size={} SOL", settings.risk_base_size_sol)
+
+    pipeline = BotPipeline(agent, enrichers=enrichers, sink=sink, config=config)
     return Orchestrator(
         pipeline,
         build_enabled_scanners(settings),
         workers=settings.workers,
         queue_size=settings.queue_size,
         dedup_ttl_s=settings.dedup_ttl_s,
+        background_tasks=background_tasks,
     )
 
 
