@@ -29,6 +29,12 @@ class RiskConfig:
     take_profit_pct: float = 0.30
     stop_loss_pct: float = 0.15
     max_hold_s: float = 1800.0
+    # Which Decision actions trigger a buy. Default `alert` only (conservative,
+    # for live). Add `watch` to paper-trade the analyst's watchlist and gather
+    # outcome data — the AI-first scanner rarely emits `alert` on fresh memecoins
+    # (market/social dimensions are almost always weak), so `alert`-only can go a
+    # long time with no trades.
+    buy_actions: tuple[str, ...] = ("alert",)
 
 
 class RiskManager:
@@ -52,8 +58,11 @@ class RiskManager:
         """Return a SwapRequest to execute, or ``None`` (reason logged)."""
         self._roll_day()
 
-        # Gate 1 — only high-conviction alerts.
-        if decision.action != "alert" or decision.confidence < self._cfg.min_confidence:
+        # Gate 1 — only configured buy actions at/above the confidence floor.
+        if (
+            decision.action not in self._cfg.buy_actions
+            or decision.confidence < self._cfg.min_confidence
+        ):
             return None
 
         # Gate 2 — daily-loss circuit breaker.

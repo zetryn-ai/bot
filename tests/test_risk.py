@@ -31,6 +31,13 @@ def test_non_alert_is_rejected():
     assert _rm().evaluate(_cand(), _decision(action="watch"), 0) is None
 
 
+def test_watch_buys_when_in_buy_actions():
+    rm = _rm(buy_actions=("alert", "watch"))
+    assert rm.evaluate(_cand(), _decision(action="watch", confidence=0.8), 0) is not None
+    # skip is still never a buy action here
+    assert rm.evaluate(_cand(), _decision(action="skip", confidence=0.9), 0) is None
+
+
 def test_low_confidence_is_rejected():
     assert _rm().evaluate(_cand(), _decision(confidence=0.5), 0) is None
 

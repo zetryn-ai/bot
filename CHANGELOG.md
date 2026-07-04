@@ -5,6 +5,18 @@ All notable changes to `zetryn-bot` will be documented in this file.
 The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and
 the project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.4.1] — 2026-07-04
+
+### Added
+
+- **`RISK_BUY_ACTIONS`** — configurable set of `Decision` actions that trigger a
+  paper buy (default `alert`). Set `alert,watch` to also paper-trade the
+  analyst's watchlist. The AI-first scanner rarely emits `alert` on fresh
+  memecoins (market/social dimensions are almost always weak, so the best
+  candidates cap at `watch` ~0.5–0.65), so `alert`-only can sit idle for a long
+  time; acting on `watch` lets you gather outcome data on whether the analyst's
+  watchlist has edge. Live deployments keep the conservative `alert`-only default.
+
 ## [0.4.0] — 2026-07-04
 
 **M4 — Execution layer (paper-trading) shipped.** The bot can now act on its

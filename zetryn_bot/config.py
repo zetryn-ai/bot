@@ -92,6 +92,10 @@ class Settings(BaseSettings):
     risk_base_size_sol: float = 0.1  # base position size; actual = base x confidence
     risk_min_confidence: float = 0.6  # only alerts at/above this confidence buy
     risk_max_positions: int = 5  # max concurrent open positions
+    # Decision actions that trigger a buy (CSV). Default alert-only (live-safe);
+    # set to "alert,watch" to paper-trade the watchlist (the analyst rarely
+    # emits alert on fresh memecoins, so alert-only can sit idle for a long time).
+    risk_buy_actions: Annotated[list[str], NoDecode] = Field(default_factory=lambda: ["alert"])
     risk_daily_loss_limit_sol: float = 1.0  # circuit breaker: stop buying past this daily loss
     exit_tp_pct: float = 0.30  # take profit at +30%
     exit_sl_pct: float = 0.15  # stop loss at -15%
@@ -103,7 +107,9 @@ class Settings(BaseSettings):
     log_file: str = ""
 
     # CSV → list normalisation for env vars passed as comma-separated strings
-    @field_validator("helius_api_keys", "birdeye_api_keys", "scanners_enabled", mode="before")
+    @field_validator(
+        "helius_api_keys", "birdeye_api_keys", "scanners_enabled", "risk_buy_actions", mode="before"
+    )
     @classmethod
     def _csv_to_list(cls, v):
         return _parse_csv(v)
