@@ -20,6 +20,31 @@ trees. If unsure where something belongs, default to a commit message
 that explains it; if the explanation grows past a paragraph, it's
 probably a design doc waiting to happen — go to `docs/plans/`.
 
+## External APIs — verify current specs before coding (MANDATORY pre-flight)
+
+Before implementing or advising on **anything** that touches an external
+endpoint, API, auth scheme, or key format, **verify the current state from
+the vendor's official live docs** (web search / fetch). Do **not** trust
+training-cutoff memory for API specifics — it goes stale and each wrong
+assumption becomes a bug-fixing round trip.
+
+This bit us repeatedly (2026-07-04): the Gemini key format changed to
+`AQ.xxxxx` (older memory said `AIza…` only); GMGN OpenAPI moved from
+"paid/partner-only" to open-to-all with **key-pair request signing** (the
+imported `gmgn_openapi.py` still uses an older single `X-APIKEY` header);
+Pump.fun / PumpPortal endpoints drift too.
+
+Rules:
+
+- Task mentions any provider (Gemini/Groq/OpenRouter, Helius, BirdEye, GMGN,
+  PumpPortal/Pump.fun, Jupiter, RugCheck, DexScreener, GeckoTerminal,
+  Telegram, Twitter/X)? Look up the vendor's **current** endpoint URLs, auth
+  scheme, key format, and rate limits **first**.
+- The scanner/enricher sources are cdexio-origin (see Provenance). Treat their
+  hardcoded endpoints + auth as **suspect until verified live** — they were
+  correct at import time, not necessarily now.
+- If you cannot verify, say so — never assert a stale spec as fact.
+
 ## Framework Boundary (NON-NEGOTIABLE — read first, every session)
 
 **This repo is the I/O side.** The decision side lives in
