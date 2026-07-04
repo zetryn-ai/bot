@@ -58,6 +58,42 @@ async def test_already_held_mint_is_not_restacked():
 
 
 @pytest.mark.asyncio
+async def test_concurrent_emits_do_not_overshoot_max_positions():
+    import asyncio
+
+    from zetryn_bot.execution.executor import Position, SwapRequest
+
+    class _SlowExecutor:
+        """buy() awaits (yields the loop) to expose the check→add race window."""
+
+        async def buy(self, req: SwapRequest):
+            await asyncio.sleep(0)  # suspension point other workers could exploit
+            return Position(
+                mint=req.mint,
+                symbol=req.symbol,
+                size_sol=req.size_sol,
+                tokens_atomic=1,
+                take_profit_pct=0.3,
+                stop_loss_pct=0.15,
+                max_hold_s=1800,
+                confidence=req.confidence,
+            )
+
+        async def sell(self, position, reason):  # pragma: no cover - unused here
+            return None
+
+    jup = _FakeJupiter()
+    risk = RiskManager(RiskConfig(base_size_sol=0.1, min_confidence=0.5, max_positions=3))
+    tracker = PositionTracker(_SlowExecutor(), jup, risk)
+    sink = ExecutionSink(risk, _SlowExecutor(), tracker)
+
+    # 10 distinct alerts fired concurrently; the cap is 3.
+    cands = [_cand(f"Mint{i}") for i in range(10)]
+    await asyncio.gather(*(sink.emit(c, Decision(action="alert", confidence=0.8)) for c in cands))
+    assert tracker.open_count() == 3  # lock kept it exactly at the cap
+
+
+@pytest.mark.asyncio
 async def test_tee_sink_fans_out_and_isolates_errors():
     seen: list[str] = []
 

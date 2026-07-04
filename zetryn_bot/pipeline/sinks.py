@@ -6,6 +6,7 @@ without touching ``BotPipeline`` or anything upstream of it.
 
 from __future__ import annotations
 
+import asyncio
 from typing import Protocol, runtime_checkable
 
 from loguru import logger
@@ -97,13 +98,18 @@ class ExecutionSink:
         self._risk = risk
         self._executor = executor
         self._tracker = tracker
+        # Serialize check→buy→add so concurrent workers can't each pass the
+        # max-positions / already-held checks during the buy's await window and
+        # overshoot the cap (or double-buy the same mint).
+        self._lock = asyncio.Lock()
 
     async def emit(self, candidate: TokenCandidate, decision: Decision) -> None:
-        if self._tracker.holds(candidate.address):
-            return
-        req = self._risk.evaluate(candidate, decision, self._tracker.open_count())
-        if req is None:
-            return
-        position = await self._executor.buy(req)
-        if position is not None:
-            await self._tracker.add(position)
+        async with self._lock:
+            if self._tracker.holds(candidate.address):
+                return
+            req = self._risk.evaluate(candidate, decision, self._tracker.open_count())
+            if req is None:
+                return
+            position = await self._executor.buy(req)
+            if position is not None:
+                await self._tracker.add(position)

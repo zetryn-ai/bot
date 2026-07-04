@@ -5,6 +5,17 @@ All notable changes to `zetryn-bot` will be documented in this file.
 The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and
 the project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.4.2] — 2026-07-04
+
+### Fixed
+
+- **`max_positions` could be overshot under concurrency.** With multiple
+  pipeline workers, several `ExecutionSink.emit` calls could each pass the
+  max-positions / already-held checks during a buy's `await` window before any
+  of them registered its position — opening more positions than the cap (or
+  double-buying a mint). `ExecutionSink` now serializes the check→buy→add under
+  an `asyncio.Lock`, so the cap and per-mint dedup hold exactly.
+
 ## [0.4.1] — 2026-07-04
 
 ### Added
