@@ -30,7 +30,8 @@ class LogSink:
 
     async def emit(self, candidate: TokenCandidate, decision: Decision) -> None:
         log.info(
-            "decision mint={} action={} confidence={:.2f} reasons={}",
+            "decision source={} mint={} action={} confidence={:.2f} reasons={}",
+            ",".join(candidate.sources) or "?",
             candidate.address,
             decision.action,
             decision.confidence,
