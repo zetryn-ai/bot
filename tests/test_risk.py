@@ -61,6 +61,19 @@ def test_circuit_breaker_trips_on_daily_loss():
     assert rm.evaluate(_cand(), _decision(), 0) is None
 
 
+def test_max_trade_sol_caps_live_sizing():
+    rm = _rm(max_trade_sol=0.05)  # cap below what base*conf would produce
+    req = rm.evaluate(_cand(), _decision(confidence=1.0), 0)
+    assert req is not None
+    assert req.size_sol == 0.05  # capped, not 0.2 * 1.0
+
+
+def test_max_trade_sol_none_means_no_extra_cap():
+    rm = _rm(max_trade_sol=None)
+    req = rm.evaluate(_cand(), _decision(confidence=1.0), 0)
+    assert req.size_sol == 0.2  # base_size_sol, uncapped (paper mode)
+
+
 def test_circuit_breaker_resets_next_day():
     days = [date(2026, 7, 4), date(2026, 7, 4), date(2026, 7, 5)]
     rm = RiskManager(RiskConfig(daily_loss_limit_sol=0.5), today_fn=lambda: days.pop(0))

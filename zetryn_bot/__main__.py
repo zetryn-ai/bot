@@ -31,6 +31,48 @@ from zetryn_bot.runtime.registry import (
 log = logger.bind(component="runtime.main")
 
 
+def _build_executor(settings: Settings, jupiter):
+    """Return a LiveExecutor only when every guard passes; else PaperExecutor.
+
+    Live requires: EXECUTION_MODE=="live" AND the wallet keyfile decrypts
+    successfully. Any failure logs an error and falls back to paper — this
+    function never raises and never leaves execution silently un-armed.
+    """
+    from zetryn_bot.execution.executor import PaperExecutor
+
+    if settings.execution_mode != "live":
+        log.info("execution ENABLED (paper) — base_size={} SOL", settings.risk_base_size_sol)
+        return PaperExecutor(jupiter)
+
+    from zetryn_bot.execution.live import LiveExecutor
+    from zetryn_bot.execution.rpc import SolanaRpc
+    from zetryn_bot.wallet.keystore import Wallet, WalletError
+
+    try:
+        wallet = Wallet.load(settings.wallet_keyfile_path, settings.wallet_passphrase)
+    except WalletError as exc:
+        log.error(
+            "LIVE execution requested but wallet failed to load ({}) — falling back to PAPER", exc
+        )
+        return PaperExecutor(jupiter)
+
+    rpc = SolanaRpc(settings.solana_rpc_url)
+    executor = LiveExecutor(
+        wallet,
+        rpc,
+        jupiter,
+        slippage_bps=settings.live_slippage_bps,
+        priority_fee_lamports=settings.live_priority_fee_lamports,
+        min_sol_reserve=settings.wallet_min_sol_reserve,
+    )
+    log.warning(
+        "LIVE EXECUTION ACTIVE — wallet={} max_trade={} SOL — real funds will be spent",
+        wallet.pubkey,
+        settings.wallet_max_trade_sol,
+    )
+    return executor
+
+
 async def build_orchestrator(settings: Settings) -> Orchestrator:
     """Assemble the full runtime graph from ``settings``.
 
@@ -61,17 +103,19 @@ async def build_orchestrator(settings: Settings) -> Orchestrator:
         max_bundler_wallets=settings.gate_max_bundler_wallets,
         min_gmgn_safety_score=settings.gate_min_gmgn_safety_score,
     )
-    # Sink: LogSink always; add the paper-trading ExecutionSink (behind a
-    # TeeSink) + its position monitor loop only when execution is enabled.
+    # Sink: LogSink always; add the ExecutionSink (behind a TeeSink) + its
+    # position monitor loop only when execution is enabled. The executor is
+    # PaperExecutor unless every live guard passes (see _build_executor).
     sink = LogSink()
     background_tasks: list = []
     if settings.execution_enabled:
-        from zetryn_bot.execution.executor import PaperExecutor
         from zetryn_bot.execution.jupiter import JupiterQuote
         from zetryn_bot.execution.position import PositionTracker
         from zetryn_bot.execution.risk import RiskConfig, RiskManager
 
         jupiter = JupiterQuote()
+        is_live = settings.execution_mode == "live"
+        executor = _build_executor(settings, jupiter)
         risk = RiskManager(
             RiskConfig(
                 base_size_sol=settings.risk_base_size_sol,
@@ -82,15 +126,15 @@ async def build_orchestrator(settings: Settings) -> Orchestrator:
                 take_profit_pct=settings.exit_tp_pct,
                 stop_loss_pct=settings.exit_sl_pct,
                 max_hold_s=settings.exit_max_hold_s,
+                # Only cap live trades — paper mode has no real funds to protect.
+                max_trade_sol=settings.wallet_max_trade_sol if is_live else None,
             )
         )
-        executor = PaperExecutor(jupiter)
         tracker = PositionTracker(
             executor, jupiter, risk, poll_interval_s=settings.exec_poll_interval_s
         )
         sink = TeeSink([LogSink(), ExecutionSink(risk, executor, tracker)])
         background_tasks.append(("execution.monitor", tracker.monitor_loop))
-        log.info("execution ENABLED (paper) — base_size={} SOL", settings.risk_base_size_sol)
 
     pipeline = BotPipeline(agent, enrichers=enrichers, sink=sink, config=config)
     return Orchestrator(

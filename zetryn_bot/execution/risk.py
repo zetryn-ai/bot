@@ -35,6 +35,10 @@ class RiskConfig:
     # (market/social dimensions are almost always weak), so `alert`-only can go a
     # long time with no trades.
     buy_actions: tuple[str, ...] = ("alert",)
+    # Absolute per-trade cap for live execution, independent of base_size_sol *
+    # confidence — a last-resort guard against a misconfigured base size or
+    # confidence when real funds are on the line. None = no extra cap (paper).
+    max_trade_sol: float | None = None
 
 
 class RiskManager:
@@ -84,7 +88,10 @@ class RiskManager:
             )
             return None
 
-        size = round(self._cfg.base_size_sol * decision.confidence, 4)
+        size = self._cfg.base_size_sol * decision.confidence
+        if self._cfg.max_trade_sol is not None:
+            size = min(size, self._cfg.max_trade_sol)
+        size = round(size, 4)
         return SwapRequest(
             mint=candidate.address,
             symbol=candidate.symbol,
