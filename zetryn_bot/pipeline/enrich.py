@@ -13,6 +13,9 @@ from loguru import logger
 from zetryn_bot.models.token import TokenCandidate
 from zetryn_bot.scanners.protocol import TokenEnricher
 
+# Bind a component so error records survive setup_logger's component filter.
+log = logger.bind(component="pipeline.enrich")
+
 
 async def enrich_candidate(
     candidate: TokenCandidate,
@@ -31,7 +34,5 @@ async def enrich_candidate(
         try:
             candidate = await enricher.enrich(candidate.address, candidate, session)
         except Exception:
-            logger.exception(
-                "enricher {} raised for {}; skipping", enricher.name, candidate.address
-            )
+            log.exception("enricher {} raised for {}; skipping", enricher.name, candidate.address)
     return candidate

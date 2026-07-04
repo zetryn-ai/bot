@@ -32,6 +32,17 @@ ENV/
 *.session-journal
 telegram_session/
 twitter_cookies/
+# Twitter cookie stores (any location) — account_*.json hold live session cookies
+zetryn_bot/twitters/
+account_*.json
+
+# GMGN signing keys (Ed25519 / RSA key pair — NEVER commit)
+gmgn_private_key
+gmgn_public_key
+id_ed25519_gmgn*
+id_ed25519
+id_ed25519.pub
+*.tar.gz
 
 # Logs
 logs/

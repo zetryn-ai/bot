@@ -52,6 +52,10 @@ _DEFAULT_COOLDOWN_SEC = 10.0
 # protect downstream callers from runaway 429 spirals.
 _cache: dict[tuple[str, str], tuple[float, dict | list]] = {}
 _cooldown_until: float = 0.0
+# Set once the server rejects the API key (HTTP/body 401 AUTH_KEY_INVALID). An
+# invalid key never becomes valid mid-process, so retrying per candidate just
+# floods logs and burns calls — disable GMGN for the rest of the run instead.
+_auth_disabled: bool = False
 
 
 class GmgnEnricher:
@@ -94,6 +98,9 @@ class GmgnEnricher:
 
     async def _get(self, sub_path: str, query: dict) -> dict | list | None:
         """Authenticated GET with module-level cache + cooldown handling."""
+        if _auth_disabled:
+            return None
+
         key = (sub_path, str(query.get("address", "")))
         hit = _cache.get(key)
         if hit and hit[0] > time.time():
@@ -118,10 +125,17 @@ class GmgnEnricher:
                 if resp.status_code == 429:
                     _enter_cooldown(resp.headers.get("x-ratelimit-reset"))
                     return None
+                if resp.status_code == 401:
+                    _disable_auth(_error_detail(resp))
+                    return None
                 if resp.status_code != 200:
-                    self._log.debug(f"{sub_path} HTTP {resp.status_code}")
+                    self._log.debug(f"{sub_path} HTTP {resp.status_code}: {resp.text[:200]}")
                     return None
                 body = resp.json()
+                # A valid HTTP 200 can still carry an auth error in the body.
+                if body.get("code") == 401:
+                    _disable_auth(f"{body.get('error')}: {body.get('message')}")
+                    return None
                 if body.get("code") != 0:
                     self._log.debug(f"{sub_path} code={body.get('code')} error={body.get('error')}")
                     return None
@@ -137,6 +151,33 @@ class GmgnEnricher:
 # ──────────────────────────────────────────────────────────────────────────
 # Module-level cooldown helpers (shared state across enricher instances)
 # ──────────────────────────────────────────────────────────────────────────
+
+
+def _error_detail(resp) -> str:
+    """Best-effort human-readable error from a GMGN response body."""
+    try:
+        body = resp.json()
+        return f"{body.get('error')}: {body.get('message')}"
+    except Exception:
+        return resp.text[:200]
+
+
+def _disable_auth(detail: str) -> None:
+    """Disable GMGN for the rest of the process after an auth rejection.
+
+    An invalid API key doesn't become valid mid-run, so we log one actionable
+    warning and stop calling GMGN — instead of a 401 per candidate forever.
+    """
+    global _auth_disabled
+    if _auth_disabled:
+        return
+    _auth_disabled = True
+    logger.bind(component="gmgn").warning(
+        "GMGN auth rejected ({}) — disabling GMGN enrichment for this run. "
+        "Check GMGN_API_KEY: apply/regenerate at https://gmgn.ai/ai (upload your "
+        "public key) and confirm the key is active.",
+        detail,
+    )
 
 
 def _is_cooling_down() -> bool:

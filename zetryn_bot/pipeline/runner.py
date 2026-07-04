@@ -18,6 +18,9 @@ from zetryn_bot.pipeline.enrich import enrich_candidate
 from zetryn_bot.pipeline.sinks import DecisionSink, LogSink
 from zetryn_bot.scanners.protocol import Scanner, TokenEnricher
 
+# Bind a component so error records survive setup_logger's component filter.
+log = logger.bind(component="pipeline.runner")
+
 
 class BotPipeline:
     """One compiled agent + a set of enrichers + a sink, run over candidates."""
@@ -42,7 +45,7 @@ class BotPipeline:
         try:
             context = TradingContext(token=to_token_input(enriched), config=self.config)
         except Exception:
-            logger.exception("adapter failed for {}; emitting synthetic abort", enriched.address)
+            log.exception("adapter failed for {}; emitting synthetic abort", enriched.address)
             decision = Decision(
                 action="abort",
                 reasons=["adapter failed to build TokenInput"],
@@ -55,7 +58,7 @@ class BotPipeline:
         try:
             state = await self.agent.run(state)
         except GraphExecutionError:
-            logger.exception("agent run failed for {}; emitting abort decision", enriched.address)
+            log.exception("agent run failed for {}; emitting abort decision", enriched.address)
             decision = Decision(
                 action="abort",
                 reasons=["agent execution failed"],

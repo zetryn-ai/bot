@@ -13,6 +13,10 @@ from trading.schemas import Decision
 
 from zetryn_bot.models.token import TokenCandidate
 
+# Bind a component so records pass setup_logger's ``"component" in extra`` filter
+# — without it every decision log is silently dropped by both sinks.
+log = logger.bind(component="pipeline.sink")
+
 
 @runtime_checkable
 class DecisionSink(Protocol):
@@ -25,7 +29,7 @@ class LogSink:
     """Production default for M2 — logs every decision at info level."""
 
     async def emit(self, candidate: TokenCandidate, decision: Decision) -> None:
-        logger.info(
+        log.info(
             "decision mint={} action={} confidence={:.2f} reasons={}",
             candidate.address,
             decision.action,

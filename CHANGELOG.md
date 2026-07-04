@@ -5,6 +5,32 @@ All notable changes to `zetryn-bot` will be documented in this file.
 The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and
 the project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.3.2] — 2026-07-04
+
+### Fixed
+
+- **Decision logs are no longer silently dropped.** `LogSink`, the enrichment
+  loop, and the pipeline runner logged without binding a `component`, so
+  `setup_logger`'s `"component" in extra` filter discarded every decision and
+  pipeline-error record. They now bind a component and appear in the logs.
+
+### Changed
+
+- **GMGN enricher fails loud-once on auth rejection instead of flooding.** On a
+  401 (`AUTH_KEY_INVALID`) the enricher now logs one actionable warning (with
+  the server's message + where to fix the key) and disables GMGN for the rest
+  of the run, rather than retrying — and re-logging — on every candidate.
+  Response bodies are now logged on unexpected statuses for diagnosability.
+
+### Added
+
+- **`scripts/gmgn_check.py`** — one-shot GMGN key checker. Makes a single
+  authenticated `token/info` read and prints PASS/FAIL with the server's exact
+  response, so a key can be validated without running the whole bot. (The
+  enricher's auth was verified correct against GMGN's official CLI — host,
+  path, `X-APIKEY` + `client_id`, curl_cffi to clear Cloudflare — so the
+  earlier 401s were an invalid key, not a code bug.)
+
 ## [0.3.1] — 2026-07-04
 
 ### Fixed

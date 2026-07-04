@@ -7,7 +7,7 @@ build-backend = "hatchling.build"
 
 [project]
 name = "zetryn-bot"
-version = "0.3.1"
+version = "0.3.2"
 description = "Solana memecoin scanner sources and bot scaffolding — the I/O companion to zetryn-trading. Phase 1 scaffolding (scanner sources only)."
 readme = "README.md"
 requires-python = ">=3.11"
