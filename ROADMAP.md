@@ -23,6 +23,15 @@ appropriately on landing.
 | **M7** | Observability (Telegram/Discord notifier, heartbeat, crash dump) | 📅 planned | v0.7.0 | TBD |
 | **M8** | Deployment (Dockerfile, compose, systemd, deploy docs) | 📅 planned | v0.8.0 | TBD |
 | **M9** | API + Dashboard (FastAPI + Next.js) | 📅 planned | v0.9.0 (or v1.0.0 cut) | TBD |
+| **M10** | Specialized strategy routing (per-signal agents: sniper / graduation / KOL copy-trade / confluence, incl. `PositionContext`) | 📅 planned | v0.10.0 | TBD |
+
+**On M10:** M3 wires a single general agent (`build_scanner`). Routing each
+signal type to its specialized `zetryn-trading` agent (`build_sniper`,
+`build_graduation`, `build_kol_copytrade`, …) is deferred to its own milestone.
+It needs `PositionContext` / `GraduationContext` etc., which only become
+meaningful once execution (M4) and persistence (M6) exist — so M10 sits
+**after M6**. `BotPipeline` is already agent-agnostic, so M10 is "several
+pipelines + a dispatcher," not a rewrite of M3.
 
 A `v1.0.0` stable release is cut once **M2** ships at minimum (the first
 end-to-end zetryn-trading-integrated bot). The exact cutoff between
@@ -59,6 +68,8 @@ M1 (refactor + Protocol)
                        (depends on M4)
                        
                                        M8 (deploy) — needs M4
+
+   M4 + M6 ─→ M10 (specialized strategy routing — needs PositionContext)
 ```
 
 M5 (wallet) only meaningful after M4 (execution) — wallet exists to sign
