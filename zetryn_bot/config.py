@@ -114,6 +114,16 @@ class Settings(BaseSettings):
     live_slippage_bps: int = 200
     live_priority_fee_lamports: int | None = None  # None = Jupiter auto
 
+    # ── Persistence (M6) ─────────────────────────────────────────────────────
+    # Open positions, closed trades, and the daily circuit breaker persist here
+    # so a restart doesn't lose them. If the DB is unreachable at startup the
+    # runtime falls back to in-memory state (logged), never crashes.
+    database_url: str = "postgresql+asyncpg://zetryn:zetryn@localhost:5432/zetryn_bot"
+    # Opt-in: wire the framework's DecisionLog (Postgres-backed) into the agent,
+    # activating ReflectiveNode (analyst learns from recent losses). Adds a
+    # historical read per decision.
+    enable_decision_log: bool = False
+
     # ── Logging ─────────────────────────────────────────────────────────────
     log_level: str = "INFO"
     log_file: str = ""

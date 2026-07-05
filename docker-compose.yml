@@ -1,0 +1,25 @@
+# Local / VPS Postgres for the M6 persistence layer.
+#   docker compose up -d
+# Matches the default DATABASE_URL:
+#   postgresql+asyncpg://zetryn:zetryn@localhost:5432/zetryn_bot
+# Override POSTGRES_PASSWORD (and the URL) for anything but local dev.
+services:
+  postgres:
+    image: postgres:16-alpine
+    container_name: zetryn_bot_pg
+    environment:
+      POSTGRES_DB: zetryn_bot
+      POSTGRES_USER: zetryn
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-zetryn}
+    ports:
+      - "5432:5432"
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U zetryn -d zetryn_bot"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+
+volumes:
+  pgdata:

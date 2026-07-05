@@ -7,7 +7,7 @@ build-backend = "hatchling.build"
 
 [project]
 name = "zetryn-bot"
-version = "0.5.1"
+version = "0.6.0"
 description = "Solana memecoin scanner sources and bot scaffolding — the I/O companion to zetryn-trading. Phase 1 scaffolding (scanner sources only)."
 readme = "README.md"
 requires-python = ">=3.11"
@@ -73,6 +73,11 @@ dependencies = [
     "solana>=0.34",             # AsyncClient — RPC submission + confirmation
     "base58>=2.1",
     "cryptography>=42.0",       # Fernet — encrypted keyfile at rest
+
+    # Persistence (M6)
+    "sqlalchemy[asyncio]>=2.0", # async ORM + Core; one stack for models + queries
+    "asyncpg>=0.29",            # PostgreSQL async driver under SQLAlchemy
+    "alembic>=1.13",            # schema migrations (autogenerate from db/models.py)
 ]
 
 [project.optional-dependencies]
