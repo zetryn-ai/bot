@@ -1,9 +1,10 @@
-"""PositionTracker — in-memory open positions + the exit monitor loop.
+"""PositionTracker — open positions + the exit monitor loop, with persistence.
 
-Holds open positions (one per mint), polls Jupiter for each position's current
-SOL value, and auto-closes on take-profit / stop-loss / max-hold. Closed trades
-accumulate in memory (durable persistence is M6) and feed realized PnL back to
-the RiskManager's circuit breaker.
+Open positions and closed trades persist to Postgres (M6) when a repo is
+supplied; without one it behaves exactly as M4/M5 (in-memory only). On startup
+`load_and_reconcile` restores open positions from the DB, and in live mode
+verifies each against the actual on-chain token balance before resuming — a
+mismatch is flagged `needs_review` and excluded from the monitor loop.
 """
 
 from __future__ import annotations
@@ -13,6 +14,7 @@ import time
 from collections.abc import Callable
 
 from loguru import logger
+from solders.pubkey import Pubkey
 
 from zetryn_bot.execution.executor import ClosedTrade, Executor, Position
 from zetryn_bot.execution.jupiter import SOL_MINT, JupiterQuote, lamports_to_sol
@@ -33,6 +35,8 @@ class PositionTracker:
         poll_interval_s: float = 5.0,
         stats_interval_s: float = 60.0,
         now_fn: Callable[[], float] = time.monotonic,
+        repo=None,  # PositionRepo | None — None keeps M4/M5 in-memory behaviour
+        execution_mode: str = "paper",
     ) -> None:
         self._executor = executor
         self._jup = jupiter
@@ -40,6 +44,8 @@ class PositionTracker:
         self._poll_interval_s = poll_interval_s
         self._stats_interval_s = stats_interval_s
         self._now = now_fn
+        self._repo = repo
+        self._execution_mode = execution_mode
         self._open: dict[str, Position] = {}
         self._closed: list[ClosedTrade] = []
 
@@ -50,9 +56,42 @@ class PositionTracker:
         return mint in self._open
 
     async def add(self, position: Position) -> None:
-        """Register a freshly-opened position, stamping its open time."""
+        """Register a freshly-opened position, stamping its open time + persisting."""
         position.opened_at = self._now()
         self._open[position.mint] = position
+        if self._repo is not None:
+            await self._repo.save_open(position, self._execution_mode)
+
+    async def load_and_reconcile(self, wallet_pubkey: str | None, rpc) -> None:
+        """Restore open positions from the DB. In live mode, verify each against
+        the on-chain token balance; a mismatch is marked ``needs_review`` and
+        excluded from the monitor loop (never auto-traded on stale data)."""
+        if self._repo is None:
+            return
+        loaded = await self._repo.load_open(now_fn=self._now)
+        reviewed = 0
+        for pos in loaded:
+            if self._execution_mode == "live" and rpc is not None and wallet_pubkey:
+                onchain = await rpc.get_token_balance_for_mint(
+                    Pubkey.from_string(wallet_pubkey), Pubkey.from_string(pos.mint)
+                )
+                if onchain != pos.tokens_atomic:
+                    log.warning(
+                        "RECONCILE MISMATCH {} — db={} on-chain={} — marking needs_review, "
+                        "NOT auto-trading",
+                        pos.symbol or pos.mint[:8],
+                        pos.tokens_atomic,
+                        onchain,
+                    )
+                    await self._repo.mark_needs_review(pos.mint)
+                    reviewed += 1
+                    continue
+            self._open[pos.mint] = pos
+        log.info(
+            "restored {} open position(s) from DB ({} flagged needs_review)",
+            len(self._open),
+            reviewed,
+        )
 
     def _exit_reason(self, position: Position, current_sol: float) -> str | None:
         pnl_pct = (
@@ -78,10 +117,13 @@ class PositionTracker:
                 continue
             trade = await self._executor.sell(position, reason)
             if trade is None:
-                continue  # sell failed (no quote) — keep the position open, retry next sweep
+                continue  # sell failed — keep the position open, retry next sweep
             del self._open[mint]
             self._closed.append(trade)
-            self._risk.record_close(trade.pnl_sol)
+            if self._repo is not None:
+                await self._repo.delete_open(mint)
+                await self._repo.save_closed_trade(trade, self._execution_mode)
+            await self._risk.record_close(trade.pnl_sol)
 
     async def monitor_loop(self) -> None:
         """Supervised task: sweep exits every ``poll_interval_s``; log stats periodically."""

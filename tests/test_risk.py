@@ -54,10 +54,10 @@ def test_max_positions_blocks():
     assert rm.evaluate(_cand(), _decision(), 1) is not None
 
 
-def test_circuit_breaker_trips_on_daily_loss():
+async def test_circuit_breaker_trips_on_daily_loss():
     rm = _rm(daily_loss_limit_sol=0.5)
     assert rm.evaluate(_cand(), _decision(), 0) is not None  # ok before losses
-    rm.record_close(-0.6)  # exceed daily loss limit
+    await rm.record_close(-0.6)  # exceed daily loss limit
     assert rm.evaluate(_cand(), _decision(), 0) is None
 
 
@@ -74,9 +74,9 @@ def test_max_trade_sol_none_means_no_extra_cap():
     assert req.size_sol == 0.2  # base_size_sol, uncapped (paper mode)
 
 
-def test_circuit_breaker_resets_next_day():
+async def test_circuit_breaker_resets_next_day():
     days = [date(2026, 7, 4), date(2026, 7, 4), date(2026, 7, 5)]
     rm = RiskManager(RiskConfig(daily_loss_limit_sol=0.5), today_fn=lambda: days.pop(0))
-    rm.record_close(-0.6)  # day 1
+    await rm.record_close(-0.6)  # day 1
     # day 2 lookup happens inside evaluate -> rolls over, breaker resets
     assert rm.evaluate(_cand(), _decision(), 0) is not None

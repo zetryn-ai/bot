@@ -44,11 +44,18 @@ class RiskConfig:
 class RiskManager:
     """Gate + size an alert into a SwapRequest, and track daily realized PnL."""
 
-    def __init__(self, config: RiskConfig, *, today_fn=date.today) -> None:
+    def __init__(self, config: RiskConfig, *, today_fn=date.today, repo=None) -> None:
         self._cfg = config
         self._today_fn = today_fn
         self._day = today_fn()
         self._realized_pnl_today = 0.0
+        self._repo = repo  # RiskStateRepo | None — None keeps M4/M5 in-memory behaviour
+
+    async def load(self) -> None:
+        """Restore today's realized PnL from the DB so a restart doesn't reset
+        the circuit breaker mid-day. No-op without a repo."""
+        if self._repo is not None:
+            self._realized_pnl_today = await self._repo.load_day(self._day)
 
     def _roll_day(self) -> None:
         today = self._today_fn()
@@ -102,7 +109,9 @@ class RiskManager:
             confidence=decision.confidence,
         )
 
-    def record_close(self, pnl_sol: float) -> None:
-        """Feed realized PnL back for the daily circuit breaker."""
+    async def record_close(self, pnl_sol: float) -> None:
+        """Feed realized PnL back for the daily circuit breaker, and persist it."""
         self._roll_day()
         self._realized_pnl_today += pnl_sol
+        if self._repo is not None:
+            await self._repo.save_day(self._day, self._realized_pnl_today)

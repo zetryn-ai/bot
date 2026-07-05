@@ -32,17 +32,19 @@ log = logger.bind(component="runtime.main")
 
 
 def _build_executor(settings: Settings, jupiter):
-    """Return a LiveExecutor only when every guard passes; else PaperExecutor.
+    """Return ``(executor, rpc, wallet_pubkey)``. Live only when every guard passes.
 
     Live requires: EXECUTION_MODE=="live" AND the wallet keyfile decrypts
     successfully. Any failure logs an error and falls back to paper — this
-    function never raises and never leaves execution silently un-armed.
+    function never raises and never leaves execution silently un-armed. ``rpc``
+    and ``wallet_pubkey`` are non-None only for a genuinely-live executor (used
+    by M6 startup reconciliation); paper/fallback returns ``(executor, None, None)``.
     """
     from zetryn_bot.execution.executor import PaperExecutor
 
     if settings.execution_mode != "live":
         log.info("execution ENABLED (paper) — base_size={} SOL", settings.risk_base_size_sol)
-        return PaperExecutor(jupiter)
+        return PaperExecutor(jupiter), None, None
 
     from zetryn_bot.execution.live import LiveExecutor
     from zetryn_bot.execution.rpc import SolanaRpc
@@ -54,7 +56,7 @@ def _build_executor(settings: Settings, jupiter):
         log.error(
             "LIVE execution requested but wallet failed to load ({}) — falling back to PAPER", exc
         )
-        return PaperExecutor(jupiter)
+        return PaperExecutor(jupiter), None, None
 
     rpc = SolanaRpc(settings.solana_rpc_url)
     executor = LiveExecutor(
@@ -70,7 +72,23 @@ def _build_executor(settings: Settings, jupiter):
         wallet.pubkey,
         settings.wallet_max_trade_sol,
     )
-    return executor
+    return executor, rpc, wallet.pubkey
+
+
+async def _build_session_factory(settings: Settings):
+    """Build a DB session factory, or None if Postgres is unreachable (fallback).
+
+    A connection failure logs once and returns None — the runtime then uses
+    in-memory state (M4/M5 behaviour) rather than crashing.
+    """
+    from zetryn_bot.db.engine import build_engine, build_session_factory, check_connection
+
+    engine = build_engine(settings.database_url)
+    if not await check_connection(engine):
+        await engine.dispose()
+        return None
+    log.info("persistence ENABLED — Postgres reachable")
+    return build_session_factory(engine)
 
 
 async def build_orchestrator(settings: Settings) -> Orchestrator:
@@ -85,7 +103,24 @@ async def build_orchestrator(settings: Settings) -> Orchestrator:
     from trading.schemas import ScannerConfig
 
     llm = try_build_llm_client()
-    agent = build_scanner(llm_client=llm)
+
+    # Persistence (M6): a shared session factory (or None on DB failure → in-memory).
+    # Set up when execution or the decision log needs it.
+    session_factory = None
+    if settings.execution_enabled or settings.enable_decision_log:
+        session_factory = await _build_session_factory(settings)
+
+    # Decision log (M6): Postgres-backed → activates the framework's ReflectiveNode.
+    decision_log = None
+    if settings.enable_decision_log and session_factory is not None:
+        from zetryn.memory import DecisionLog
+
+        from zetryn_bot.db.memory_store import PostgresStore
+
+        decision_log = DecisionLog(PostgresStore(session_factory))
+        log.info("decision log ENABLED — ReflectiveNode active (analyst learns from past losses)")
+
+    agent = build_scanner(llm_client=llm, decision_log=decision_log)
 
     enrichers = build_enrichers(settings)
     twitter = await build_twitter_enricher(settings)
@@ -115,7 +150,17 @@ async def build_orchestrator(settings: Settings) -> Orchestrator:
 
         jupiter = JupiterQuote()
         is_live = settings.execution_mode == "live"
-        executor = _build_executor(settings, jupiter)
+        executor, rpc, wallet_pubkey = _build_executor(settings, jupiter)
+
+        # M6 repos (None when Postgres is unreachable → in-memory, M4/M5 behaviour).
+        risk_repo = position_repo = None
+        if session_factory is not None:
+            from zetryn_bot.db.position_repo import PositionRepo
+            from zetryn_bot.db.risk_repo import RiskStateRepo
+
+            risk_repo = RiskStateRepo(session_factory)
+            position_repo = PositionRepo(session_factory)
+
         risk = RiskManager(
             RiskConfig(
                 base_size_sol=settings.risk_base_size_sol,
@@ -128,11 +173,21 @@ async def build_orchestrator(settings: Settings) -> Orchestrator:
                 max_hold_s=settings.exit_max_hold_s,
                 # Only cap live trades — paper mode has no real funds to protect.
                 max_trade_sol=settings.wallet_max_trade_sol if is_live else None,
-            )
+            ),
+            repo=risk_repo,
         )
+        await risk.load()  # restore today's circuit-breaker PnL
+
         tracker = PositionTracker(
-            executor, jupiter, risk, poll_interval_s=settings.exec_poll_interval_s
+            executor,
+            jupiter,
+            risk,
+            poll_interval_s=settings.exec_poll_interval_s,
+            repo=position_repo,
+            execution_mode=settings.execution_mode,
         )
+        await tracker.load_and_reconcile(wallet_pubkey, rpc)  # restore + (live) verify on-chain
+
         sink = TeeSink([LogSink(), ExecutionSink(risk, executor, tracker)])
         background_tasks.append(("execution.monitor", tracker.monitor_loop))
 

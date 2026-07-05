@@ -11,6 +11,7 @@ from __future__ import annotations
 from loguru import logger
 from solana.rpc.async_api import AsyncClient
 from solana.rpc.commitment import Confirmed
+from solana.rpc.models import TokenAccountOpts
 from solders.pubkey import Pubkey
 from solders.signature import Signature
 from solders.transaction import VersionedTransaction
@@ -78,3 +79,22 @@ class SolanaRpc:
         except Exception:
             return None
         return int(resp.value.amount)
+
+    async def get_token_balance_for_mint(self, owner: Pubkey, mint: Pubkey) -> int:
+        """Total atomic balance of ``mint`` held by ``owner`` across its token accounts.
+
+        Sums all token accounts (usually one ATA). Returns 0 when the owner holds
+        none — used by M6 startup reconciliation to compare against the DB record.
+        """
+        try:
+            resp = await self._client.get_token_accounts_by_owner_json_parsed(
+                owner, TokenAccountOpts(mint=mint), commitment=Confirmed
+            )
+        except Exception as exc:
+            log.debug("get_token_balance_for_mint {} error: {}", str(mint)[:8], exc)
+            return 0
+        total = 0
+        for acct in resp.value:
+            info = acct.account.data.parsed["info"]
+            total += int(info["tokenAmount"]["amount"])
+        return total
