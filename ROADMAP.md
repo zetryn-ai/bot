@@ -19,7 +19,7 @@ appropriately on landing.
 | **M3** | Orchestration runtime (`python -m zetryn_bot`) | ✅ shipped | v0.3.0 | [2026-07-01-m3-orchestration-runtime.md](docs/plans/2026-07-01-m3-orchestration-runtime.md) |
 | **M4** | Execution layer (paper-trading: swap engine, position, PnL) | ✅ shipped | v0.4.0 | [2026-07-04-m4-execution-layer.md](docs/plans/2026-07-04-m4-execution-layer.md) |
 | **M5** | Wallet management (encrypted keypair, LiveExecutor) | ✅ shipped | v0.5.0 | [2026-07-04-m5-wallet-management.md](docs/plans/2026-07-04-m5-wallet-management.md) |
-| **M6** | Persistence (PostgreSQL — DecisionLog, position state) | 📅 planned | v0.6.0 | TBD |
+| **M6** | Persistence (PostgreSQL — DecisionLog, position state) | 🚧 in-progress | v0.6.0 | [2026-07-05-m6-persistence.md](docs/plans/2026-07-05-m6-persistence.md) |
 | **M7** | Observability (Telegram/Discord notifier, heartbeat, crash dump) | 📅 planned | v0.7.0 | TBD |
 | **M8** | Deployment (Dockerfile, compose, systemd, deploy docs) | 📅 planned | v0.8.0 | TBD |
 | **M9** | API + Dashboard (FastAPI + Next.js) | 📅 planned | v0.9.0 (or v1.0.0 cut) | TBD |
