@@ -116,7 +116,6 @@ class ExecutionSink:
             position = await self._executor.buy(req)
             if position is not None:
                 await self._tracker.add(position)
-                await self._notifier.notify(
-                    f"\U0001f7e2 opened {position.symbol or position.mint} "
-                    f"size={position.size_sol:.4f} SOL conf={position.confidence:.2f}"
-                )
+                from zetryn_bot.notify.format import format_open
+
+                await self._notifier.notify(format_open(position))

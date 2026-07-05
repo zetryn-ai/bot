@@ -38,6 +38,10 @@ class SwapRequest:
     stop_loss_pct: float
     max_hold_s: float
     confidence: float
+    # Human-readable token/decision detail snapshot (RiskManager.evaluate),
+    # carried through to Position/ClosedTrade for rich Telegram notifications
+    # (M7) — never persisted to the DB, in-memory only.
+    meta: str = ""
 
 
 @dataclass
@@ -53,6 +57,7 @@ class Position:
     max_hold_s: float
     confidence: float
     opened_at: float = 0.0
+    meta: str = ""
 
 
 @dataclass
@@ -110,6 +115,7 @@ class PaperExecutor:
             stop_loss_pct=req.stop_loss_pct,
             max_hold_s=req.max_hold_s,
             confidence=req.confidence,
+            meta=req.meta,
         )
 
     async def sell(self, position: Position, reason: str) -> ClosedTrade | None:

@@ -128,11 +128,10 @@ class PositionTracker:
                 await self._repo.delete_open(mint)
                 await self._repo.save_closed_trade(trade, self._execution_mode)
             await self._risk.record_close(trade.pnl_sol)
-            emoji = "\U0001f7e2" if trade.pnl_sol >= 0 else "\U0001f534"
-            await self._notifier.notify(
-                f"{emoji} closed {position.symbol or mint} reason={reason} "
-                f"pnl={trade.pnl_sol:+.4f} SOL"
-            )
+            from zetryn_bot.notify.format import format_close
+
+            held_s = self._now() - position.opened_at
+            await self._notifier.notify(format_close(position, trade, held_s))
 
     async def monitor_loop(self) -> None:
         """Supervised task: sweep exits every ``poll_interval_s``; log stats periodically."""

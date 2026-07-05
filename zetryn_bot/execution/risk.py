@@ -106,6 +106,8 @@ class RiskManager:
         if self._cfg.max_trade_sol is not None:
             size = min(size, self._cfg.max_trade_sol)
         size = round(size, 4)
+        from zetryn_bot.notify.format import build_trade_meta
+
         return SwapRequest(
             mint=candidate.address,
             symbol=candidate.symbol,
@@ -114,6 +116,7 @@ class RiskManager:
             stop_loss_pct=self._cfg.stop_loss_pct,
             max_hold_s=self._cfg.max_hold_s,
             confidence=decision.confidence,
+            meta=build_trade_meta(candidate, decision),
         )
 
     async def record_close(self, pnl_sol: float) -> None:
