@@ -1,7 +1,7 @@
 # M7 — Observability (Telegram notifier, heartbeat, crash dump)
 
 **Date:** 2026-07-05
-**Status:** Approved
+**Status:** Shipped (v0.7.0)
 **Target version:** v0.7.0
 
 M1–M6 built a bot that scans, decides, executes, and persists — but it is

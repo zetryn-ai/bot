@@ -26,10 +26,13 @@ swaps, selected via `EXECUTION_MODE=live` behind layered safety guards
 open positions, closed trades, and the daily circuit breaker survive
 restarts; live positions are reconciled against on-chain balances on
 startup; and the framework's `DecisionLog`/`ReflectiveNode` can be
-activated via a Postgres-backed store. Observability and a dashboard land
-in later phases (see ROADMAP.md).
+activated via a Postgres-backed store. M7 adds observability: a Telegram
+notifier for trade open/close, circuit-breaker trips, critical errors,
+and scanner rate-limit/key-rotation warnings (deduplicated), a periodic
+heartbeat, and crash-dump capture. A dashboard lands in a later phase
+(see ROADMAP.md).
 """
 
-__version__ = "0.6.0"
+__version__ = "0.7.0"
 
 __all__ = ["__version__"]

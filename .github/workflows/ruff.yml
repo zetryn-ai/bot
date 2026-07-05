@@ -61,5 +61,6 @@ jobs:
           python scripts/m4_smoke.py
           python scripts/m5_smoke.py
           python scripts/m6_smoke.py
+          python scripts/m7_smoke.py
       - name: pytest
         run: pytest

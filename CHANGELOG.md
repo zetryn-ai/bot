@@ -5,6 +5,52 @@ All notable changes to `zetryn-bot` will be documented in this file.
 The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and
 the project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.7.0] — 2026-07-05
+
+**M7 — Observability shipped.** A Telegram notifier surfaces the events that
+need a human — trade opens/closes with full token + AI decision detail,
+circuit-breaker trips, critical errors, and scanner rate-limit / LLM
+key-rotation warnings — plus a periodic heartbeat and crash-dump capture.
+Off by default; a misconfigured or unreachable Telegram never affects the
+trading pipeline.
+
+### Added
+
+- **`zetryn_bot.notify`** package:
+  - `protocol.py` — `Notifier` Protocol (`async def notify(text, *, dedup_key=None)`).
+  - `telegram.py` — `TelegramNotifier` (Telegram Bot API `sendMessage`,
+    in-memory dedup per `dedup_key` within a rolling window) and `NullNotifier`
+    (true no-op, used when disabled/unconfigured).
+  - `log_bridge.py` — forwards ERROR+ log records always, and WARNING records
+    only when they match a rate-limit/rotation keyword — no call-site
+    rewiring needed across scanners/framework.
+  - `heartbeat.py` — periodic uptime + open-position/PnL summary, registered
+    as an `Orchestrator` background task.
+  - `format.py` — rich message formatting: `build_trade_meta()` captures a
+    full token + decision detail snapshot (market metrics, holder data,
+    safety flags, GMGN/Twitter signals, AI score/recommendation/reasoning) at
+    buy-time, carried on `Position`/`SwapRequest` for reuse on open and close
+    notifications (never persisted to the DB — notification richness only).
+- **Notifier wiring**: `ExecutionSink` (trade opened), `PositionTracker`
+  (trade closed, PnL, exit reason), `RiskManager` (circuit breaker tripped —
+  edge-triggered once per day, not per rejected trade).
+- **Crash dump**: an unhandled exception in `main()` writes the full
+  traceback to `crash-<unix-ts>.log` and pushes a short excerpt to Telegram
+  before re-raising (process still exits non-zero).
+- New `Settings`: `NOTIFY_ENABLED`, `TELEGRAM_BOT_TOKEN`, `TELEGRAM_CHAT_ID`,
+  `NOTIFY_DEDUP_WINDOW_S` (default 900s), `HEARTBEAT_INTERVAL_S` (default
+  3600s).
+- `scripts/m7_smoke.py` — offline dedup-logic checks + an optional live
+  Telegram send when credentials are present in the environment.
+
+### Changed
+
+- `.env.example` now sets `EXIT_MAX_HOLD_S=10800` (3h) as the documented
+  starting point instead of leaving it at the code default of 1800s (30min)
+  — gives momentum room to develop given alerts already passed hard gates +
+  AI analysis, while still bounding capital lock-up risk in a stagnant token.
+  The `Settings` code default is unchanged; this only affects the template.
+
 ## [0.6.0] — 2026-07-05
 
 **M6 — Persistence (PostgreSQL) shipped.** Open positions, closed-trade

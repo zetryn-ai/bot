@@ -18,4 +18,4 @@ For roadmap progress and milestone status, see
 | 2026-07-04 | [M4 — Execution layer (paper-trading)](2026-07-04-m4-execution-layer.md) | Shipped (v0.4.0) |
 | 2026-07-04 | [M5 — Wallet management (live execution)](2026-07-04-m5-wallet-management.md) | Shipped (v0.5.0) |
 | 2026-07-05 | [M6 — Persistence (PostgreSQL)](2026-07-05-m6-persistence.md) | Shipped (v0.6.0) |
-| 2026-07-05 | [M7 — Observability (Telegram, heartbeat, crash dump)](2026-07-05-m7-observability.md) | Approved |
+| 2026-07-05 | [M7 — Observability (Telegram, heartbeat, crash dump)](2026-07-05-m7-observability.md) | Shipped (v0.7.0) |
