@@ -128,6 +128,16 @@ class Settings(BaseSettings):
     log_level: str = "INFO"
     log_file: str = ""
 
+    # ── Notifications (M7 — Telegram) ───────────────────────────────────────
+    # Off by default: NullNotifier no-ops until enabled AND both credentials
+    # are present. Bot Api token (@BotFather) + chat ID — distinct from
+    # TELEGRAM_API_ID/HASH above, which is the telethon *scanner*'s user session.
+    notify_enabled: bool = False
+    telegram_bot_token: str = ""
+    telegram_chat_id: str = ""
+    notify_dedup_window_s: float = 900.0  # rolling window collapsing repeat warnings
+    heartbeat_interval_s: float = 3600.0
+
     # CSV → list normalisation for env vars passed as comma-separated strings
     @field_validator(
         "helius_api_keys", "birdeye_api_keys", "scanners_enabled", "risk_buy_actions", mode="before"

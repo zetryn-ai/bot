@@ -44,12 +44,18 @@ class RiskConfig:
 class RiskManager:
     """Gate + size an alert into a SwapRequest, and track daily realized PnL."""
 
-    def __init__(self, config: RiskConfig, *, today_fn=date.today, repo=None) -> None:
+    def __init__(
+        self, config: RiskConfig, *, today_fn=date.today, repo=None, notifier=None
+    ) -> None:
+        from zetryn_bot.notify.telegram import NullNotifier
+
         self._cfg = config
         self._today_fn = today_fn
         self._day = today_fn()
         self._realized_pnl_today = 0.0
         self._repo = repo  # RiskStateRepo | None — None keeps M4/M5 in-memory behaviour
+        self._notifier = notifier or NullNotifier()
+        self._breaker_notified_today = False
 
     async def load(self) -> None:
         """Restore today's realized PnL from the DB so a restart doesn't reset
@@ -62,6 +68,7 @@ class RiskManager:
         if today != self._day:
             self._day = today
             self._realized_pnl_today = 0.0
+            self._breaker_notified_today = False
 
     def evaluate(
         self, candidate: TokenCandidate, decision: Decision, open_count: int
@@ -115,3 +122,10 @@ class RiskManager:
         self._realized_pnl_today += pnl_sol
         if self._repo is not None:
             await self._repo.save_day(self._day, self._realized_pnl_today)
+        tripped = self._realized_pnl_today <= -self._cfg.daily_loss_limit_sol
+        if tripped and not self._breaker_notified_today:
+            self._breaker_notified_today = True
+            await self._notifier.notify(
+                f"⛔ circuit breaker TRIPPED — daily PnL {self._realized_pnl_today:+.4f} SOL "
+                f"<= -{self._cfg.daily_loss_limit_sol} SOL — no more buys today"
+            )

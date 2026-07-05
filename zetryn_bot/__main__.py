@@ -12,12 +12,18 @@ from __future__ import annotations
 
 import asyncio
 import signal
+import time
+import traceback
+from pathlib import Path
 
 from dotenv import load_dotenv
 from loguru import logger
 
 from zetryn_bot.config import Settings
 from zetryn_bot.logger_setup import setup_logger
+from zetryn_bot.notify.log_bridge import install_log_bridge
+from zetryn_bot.notify.protocol import Notifier
+from zetryn_bot.notify.telegram import NullNotifier, TelegramNotifier
 from zetryn_bot.pipeline.runner import BotPipeline
 from zetryn_bot.pipeline.sinks import ExecutionSink, LogSink, TeeSink
 from zetryn_bot.runtime.llm import try_build_llm_client
@@ -29,6 +35,27 @@ from zetryn_bot.runtime.registry import (
 )
 
 log = logger.bind(component="runtime.main")
+
+
+def _build_notifier(settings: Settings) -> Notifier:
+    """Return a ``TelegramNotifier``, or ``NullNotifier`` if disabled/unconfigured.
+
+    Never raises: a missing token/chat ID just means no notifications, not a
+    startup failure.
+    """
+    if not settings.notify_enabled:
+        return NullNotifier()
+    if not settings.telegram_bot_token or not settings.telegram_chat_id:
+        log.warning(
+            "NOTIFY_ENABLED=true but TELEGRAM_BOT_TOKEN/TELEGRAM_CHAT_ID missing — disabled"
+        )
+        return NullNotifier()
+    log.info("notifications ENABLED — Telegram")
+    return TelegramNotifier(
+        settings.telegram_bot_token,
+        settings.telegram_chat_id,
+        dedup_window_s=settings.notify_dedup_window_s,
+    )
 
 
 def _build_executor(settings: Settings, jupiter):
@@ -101,6 +128,9 @@ async def build_orchestrator(settings: Settings) -> Orchestrator:
     # console-script entry point) doesn't pull the framework graph eagerly.
     from strategies.agents.scanner import build_scanner
     from trading.schemas import ScannerConfig
+
+    notifier = _build_notifier(settings)
+    install_log_bridge(notifier)
 
     llm = try_build_llm_client()
 
@@ -175,6 +205,7 @@ async def build_orchestrator(settings: Settings) -> Orchestrator:
                 max_trade_sol=settings.wallet_max_trade_sol if is_live else None,
             ),
             repo=risk_repo,
+            notifier=notifier,
         )
         await risk.load()  # restore today's circuit-breaker PnL
 
@@ -185,11 +216,25 @@ async def build_orchestrator(settings: Settings) -> Orchestrator:
             poll_interval_s=settings.exec_poll_interval_s,
             repo=position_repo,
             execution_mode=settings.execution_mode,
+            notifier=notifier,
         )
         await tracker.load_and_reconcile(wallet_pubkey, rpc)  # restore + (live) verify on-chain
 
-        sink = TeeSink([LogSink(), ExecutionSink(risk, executor, tracker)])
+        sink = TeeSink([LogSink(), ExecutionSink(risk, executor, tracker, notifier=notifier)])
         background_tasks.append(("execution.monitor", tracker.monitor_loop))
+
+    if settings.notify_enabled:
+        from zetryn_bot.notify.heartbeat import heartbeat_loop
+
+        tracker_for_heartbeat = tracker if settings.execution_enabled else None
+        background_tasks.append(
+            (
+                "notify.heartbeat",
+                lambda: heartbeat_loop(
+                    notifier, tracker_for_heartbeat, settings.heartbeat_interval_s
+                ),
+            )
+        )
 
     pipeline = BotPipeline(agent, enrichers=enrichers, sink=sink, config=config)
     return Orchestrator(
@@ -238,6 +283,20 @@ def main() -> int:
         asyncio.run(_run(settings))
     except KeyboardInterrupt:  # pragma: no cover - defensive; signal handler covers this
         pass
+    except Exception:
+        # Crash dump (M7): full traceback to a local file (offline debugging),
+        # short excerpt pushed to Telegram (a fresh loop — the crashed one is
+        # gone). Best-effort: a broken notifier here must not mask the crash.
+        tb = traceback.format_exc()
+        dump_path = Path(f"crash-{int(time.time())}.log")
+        dump_path.write_text(tb)
+        log.critical("unhandled crash — traceback dumped to {}", dump_path)
+        try:
+            notifier = _build_notifier(settings)
+            asyncio.run(notifier.notify(f"\U0001f534 CRASHED — see {dump_path}\n\n{tb[-800:]}"))
+        except Exception:
+            log.exception("crash notification itself failed")
+        raise
     return 0
 
 

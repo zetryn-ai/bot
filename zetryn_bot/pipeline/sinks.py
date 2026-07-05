@@ -94,10 +94,13 @@ class ExecutionSink:
     records them). Skips a mint already held so we never stack positions.
     """
 
-    def __init__(self, risk, executor, tracker) -> None:
+    def __init__(self, risk, executor, tracker, *, notifier=None) -> None:
         self._risk = risk
         self._executor = executor
         self._tracker = tracker
+        from zetryn_bot.notify.telegram import NullNotifier
+
+        self._notifier = notifier or NullNotifier()
         # Serialize check→buy→add so concurrent workers can't each pass the
         # max-positions / already-held checks during the buy's await window and
         # overshoot the cap (or double-buy the same mint).
@@ -113,3 +116,7 @@ class ExecutionSink:
             position = await self._executor.buy(req)
             if position is not None:
                 await self._tracker.add(position)
+                await self._notifier.notify(
+                    f"\U0001f7e2 opened {position.symbol or position.mint} "
+                    f"size={position.size_sol:.4f} SOL conf={position.confidence:.2f}"
+                )

@@ -37,7 +37,10 @@ class PositionTracker:
         now_fn: Callable[[], float] = time.monotonic,
         repo=None,  # PositionRepo | None — None keeps M4/M5 in-memory behaviour
         execution_mode: str = "paper",
+        notifier=None,
     ) -> None:
+        from zetryn_bot.notify.telegram import NullNotifier
+
         self._executor = executor
         self._jup = jupiter
         self._risk = risk
@@ -46,6 +49,7 @@ class PositionTracker:
         self._now = now_fn
         self._repo = repo
         self._execution_mode = execution_mode
+        self._notifier = notifier or NullNotifier()
         self._open: dict[str, Position] = {}
         self._closed: list[ClosedTrade] = []
 
@@ -124,6 +128,11 @@ class PositionTracker:
                 await self._repo.delete_open(mint)
                 await self._repo.save_closed_trade(trade, self._execution_mode)
             await self._risk.record_close(trade.pnl_sol)
+            emoji = "\U0001f7e2" if trade.pnl_sol >= 0 else "\U0001f534"
+            await self._notifier.notify(
+                f"{emoji} closed {position.symbol or mint} reason={reason} "
+                f"pnl={trade.pnl_sol:+.4f} SOL"
+            )
 
     async def monitor_loop(self) -> None:
         """Supervised task: sweep exits every ``poll_interval_s``; log stats periodically."""
