@@ -175,6 +175,7 @@ class LiveExecutor:
                 max_hold_s=req.max_hold_s,
                 confidence=req.confidence,
                 meta=req.meta,
+                token_name=req.token_name,
             )
 
     async def sell(self, position: Position, reason: str) -> ClosedTrade | None:

@@ -117,6 +117,7 @@ class RiskManager:
             max_hold_s=self._cfg.max_hold_s,
             confidence=decision.confidence,
             meta=build_trade_meta(candidate, decision),
+            token_name=candidate.name,
         )
 
     async def record_close(self, pnl_sol: float) -> None:

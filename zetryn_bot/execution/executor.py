@@ -42,6 +42,7 @@ class SwapRequest:
     # carried through to Position/ClosedTrade for rich Telegram notifications
     # (M7) — never persisted to the DB, in-memory only.
     meta: str = ""
+    token_name: str = ""
 
 
 @dataclass
@@ -58,6 +59,7 @@ class Position:
     confidence: float
     opened_at: float = 0.0
     meta: str = ""
+    token_name: str = ""
 
 
 @dataclass
@@ -116,6 +118,7 @@ class PaperExecutor:
             max_hold_s=req.max_hold_s,
             confidence=req.confidence,
             meta=req.meta,
+            token_name=req.token_name,
         )
 
     async def sell(self, position: Position, reason: str) -> ClosedTrade | None:
