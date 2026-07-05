@@ -26,6 +26,22 @@ jobs:
     name: import smoke test + pytest
     runs-on: ubuntu-latest
     needs: lint
+    services:
+      postgres:
+        image: postgres:16-alpine
+        env:
+          POSTGRES_DB: zetryn_bot_test
+          POSTGRES_USER: zetryn
+          POSTGRES_PASSWORD: zetryn
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U zetryn -d zetryn_bot_test"
+          --health-interval 5s --health-timeout 3s --health-retries 10
+    env:
+      # M6 DB integration tests + m6_smoke run against the service above.
+      DATABASE_URL: postgresql+asyncpg://zetryn:zetryn@localhost:5432/zetryn_bot_test
+      DATABASE_URL_TEST: postgresql+asyncpg://zetryn:zetryn@localhost:5432/zetryn_bot_test
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-python@v5
@@ -44,5 +60,6 @@ jobs:
           python scripts/m3_smoke.py
           python scripts/m4_smoke.py
           python scripts/m5_smoke.py
+          python scripts/m6_smoke.py
       - name: pytest
         run: pytest

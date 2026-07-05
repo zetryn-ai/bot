@@ -22,10 +22,14 @@ Jupiter quote prices, tracked and auto-exited on TP/SL/max-hold (off by
 default via `EXECUTION_ENABLED`). M5 adds a real Solana wallet — an
 encrypted keypair and a `LiveExecutor` that signs and submits real Jupiter
 swaps, selected via `EXECUTION_MODE=live` behind layered safety guards
-(falls back to paper on any guard failure). Persistence and observability
-land in later phases (see ROADMAP.md).
+(falls back to paper on any guard failure). M6 adds PostgreSQL persistence:
+open positions, closed trades, and the daily circuit breaker survive
+restarts; live positions are reconciled against on-chain balances on
+startup; and the framework's `DecisionLog`/`ReflectiveNode` can be
+activated via a Postgres-backed store. Observability and a dashboard land
+in later phases (see ROADMAP.md).
 """
 
-__version__ = "0.5.1"
+__version__ = "0.6.0"
 
 __all__ = ["__version__"]

@@ -17,4 +17,4 @@ For roadmap progress and milestone status, see
 | 2026-07-01 | [M3 — Orchestration runtime](2026-07-01-m3-orchestration-runtime.md) | Shipped (v0.3.0) |
 | 2026-07-04 | [M4 — Execution layer (paper-trading)](2026-07-04-m4-execution-layer.md) | Shipped (v0.4.0) |
 | 2026-07-04 | [M5 — Wallet management (live execution)](2026-07-04-m5-wallet-management.md) | Shipped (v0.5.0) |
-| 2026-07-05 | [M6 — Persistence (PostgreSQL)](2026-07-05-m6-persistence.md) | Draft |
+| 2026-07-05 | [M6 — Persistence (PostgreSQL)](2026-07-05-m6-persistence.md) | Shipped (v0.6.0) |

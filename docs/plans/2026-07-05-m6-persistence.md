@@ -1,7 +1,7 @@
 # M6 — Persistence (PostgreSQL)
 
 **Date:** 2026-07-05
-**Status:** Draft
+**Status:** Shipped (v0.6.0)
 **Target version:** v0.6.0
 
 M4/M5 track open positions, closed trades, and the daily-loss circuit breaker
