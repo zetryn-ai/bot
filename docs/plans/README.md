@@ -19,3 +19,4 @@ For roadmap progress and milestone status, see
 | 2026-07-04 | [M5 — Wallet management (live execution)](2026-07-04-m5-wallet-management.md) | Shipped (v0.5.0) |
 | 2026-07-05 | [M6 — Persistence (PostgreSQL)](2026-07-05-m6-persistence.md) | Shipped (v0.6.0) |
 | 2026-07-05 | [M7 — Observability (Telegram, heartbeat, crash dump)](2026-07-05-m7-observability.md) | Shipped (v0.7.0) |
+| 2026-07-10 | [M8 — Deployment (Docker, VPS)](2026-07-10-m8-deployment.md) | Approved |
