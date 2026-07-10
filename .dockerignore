@@ -1,0 +1,30 @@
+# Secrets — must NEVER enter the image or build context
+.env
+.env.*
+!.env.example
+wallet.enc
+*.session
+*.session-journal
+telegram_session*
+twitter_cookies*
+gmgn_private_key*
+id_ed25519*
+
+# Runtime artifacts
+logs/
+data/
+crash-*.log
+run.log
+
+# Dev clutter
+.git/
+.github/
+.venv/
+__pycache__/
+*.pyc
+.pytest_cache/
+.ruff_cache/
+tests/
+docs/
+htmlcov/
+.coverage
