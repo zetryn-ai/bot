@@ -72,6 +72,13 @@ class Settings(BaseSettings):
     queue_size: int = 1000  # candidate queue maxsize (backpressure bound)
     dedup_ttl_s: float = 60.0  # window for collapsing duplicate mints
 
+    # GeckoTerminal poll cadence. The free tier is a universal 30 calls/min
+    # per IP (verified 2026-07-11) with no auth — occasional 429s are handled
+    # with a 30s back-off, but on a shared/busy IP slowing these down cuts the
+    # 429 (and its Telegram warning) rate to ~zero.
+    gecko_new_pools_poll_s: float = 15.0
+    gecko_trending_poll_s: float = 45.0
+
     # ── Decision gate thresholds ────────────────────────────────────────────
     # These feed the framework's ScannerConfig, which the three hard gates
     # (safety / intel / market) check BEFORE the LLM analyst runs. Defaults

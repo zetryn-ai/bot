@@ -53,8 +53,8 @@ def build_enabled_scanners(settings: Settings) -> list[Scanner]:
         DexscreenerNewPairs(),
         DexscreenerTrending(),
         DexscreenerBoost(),
-        GeckoTerminalNewPools(),
-        GeckoTerminalTrending(),
+        GeckoTerminalNewPools(poll_interval_s=settings.gecko_new_pools_poll_s),
+        GeckoTerminalTrending(poll_interval_s=settings.gecko_trending_poll_s),
         RaydiumNewPools(),
     ]
 
