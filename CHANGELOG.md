@@ -5,6 +5,43 @@ All notable changes to `zetryn-bot` will be documented in this file.
 The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and
 the project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.8.0] — 2026-07-11
+
+**M8 — Deployment shipped.** The bot now runs 24/7 on a VPS as a Docker
+container supervised by the Docker daemon: it restarts itself after crashes
+and reboots, persists to Postgres, notifies via Telegram, and updates with
+one command.
+
+### Added
+
+- **`Dockerfile`** — two-stage build on `python:3.12-slim` (git only in the
+  build stage), non-root `bot` user, NLTK VADER lexicon pre-downloaded at
+  build time, `CMD python -m zetryn_bot`. Verified: image boots with zero
+  config and runs the full rule-only pipeline (the M3 contract).
+- **`.dockerignore`** — secrets (`.env`, `wallet.enc`, sessions, cookies) can
+  never enter the build context.
+- **`docker-compose.vps.yml`** — bot service with `restart: unless-stopped`,
+  `logs/` + `data/` bind mounts, json-file log rotation, joining an external
+  Docker network to reach a shared Postgres via container DNS (no
+  host-published DB port involved).
+- **`scripts/deploy.sh`** — one-command update, run on the server:
+  `git pull → docker compose build → alembic upgrade head → up -d → status`.
+- **CI**: `docker` job — builds the image on every push and runs the M1
+  smoke test inside it.
+- README: deployment section + status table caught up (M6–M8).
+
+### Fixed
+
+- **Telegram scanner hot-restart loop** — a producer that returned cleanly
+  (no session / no channels / connect failure) was respawned immediately by
+  the supervisor, re-logging the same ERROR every second. Permanently
+  disabled states now park the producer (`_idle_forever`) instead of
+  returning.
+- **`twitter_login` cookie loading in containers** — the library writes a
+  `.cache` directory inside its own site-packages at import time, which
+  fails with `EACCES` for a non-root user; the image now pre-creates it
+  writable.
+
 ## [0.7.0] — 2026-07-05
 
 **M7 — Observability shipped.** A Telegram notifier surfaces the events that

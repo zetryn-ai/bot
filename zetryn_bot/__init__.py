@@ -29,10 +29,12 @@ startup; and the framework's `DecisionLog`/`ReflectiveNode` can be
 activated via a Postgres-backed store. M7 adds observability: a Telegram
 notifier for trade open/close, circuit-breaker trips, critical errors,
 and scanner rate-limit/key-rotation warnings (deduplicated), a periodic
-heartbeat, and crash-dump capture. A dashboard lands in a later phase
-(see ROADMAP.md).
+heartbeat, and crash-dump capture. M8 adds deployment: a Docker image
+(two-stage, non-root), a VPS compose file supervised by the Docker daemon
+(`restart: unless-stopped`), and a one-command deploy script. A dashboard
+lands in a later phase (see ROADMAP.md).
 """
 
-__version__ = "0.7.0"
+__version__ = "0.8.0"
 
 __all__ = ["__version__"]

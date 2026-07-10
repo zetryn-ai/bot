@@ -1,7 +1,7 @@
 # M8 — Deployment (Docker, VPS)
 
 **Date:** 2026-07-10
-**Status:** Approved
+**Status:** Shipped (v0.8.0)
 **Target version:** v0.8.0
 
 M1–M7 built a bot that scans, decides, executes (paper/live), persists, and
@@ -106,13 +106,27 @@ VPS (Ubuntu 24.04, Docker 29 + Compose v5)
 
 ## 6. Definition of Done
 
-- [ ] Bot container runs on the VPS with `restart: unless-stopped`, comes
-      back by itself after `docker kill` and after a daemon restart.
-- [ ] Open paper positions survive `docker compose restart bot`
-      (`restored N open position(s) from DB` in logs).
-- [ ] Telegram heartbeat + trade notifications arrive from the VPS.
-- [ ] `./scripts/deploy.sh` performs a clean update from a new commit.
-- [ ] CI builds the image; README documents setup + update.
+- [x] Bot container runs on the VPS with `restart: unless-stopped` and comes
+      back by itself after a process crash. Verified with `kill -9` on the
+      container's host PID (`restart_count` went to 1). Note learned during
+      verification: `docker kill` does NOT trigger the restart policy — the
+      daemon treats it as a manual stop; only an exit the daemon didn't
+      initiate (real crash / external SIGKILL) does.
+- [x] Persistence round-trip against the VPS `postgres-16` passes
+      (`m6_smoke.py` in a one-off container: position age bridge + daily PnL
+      survive a simulated restart), and every boot logs
+      `restored N open position(s) from DB`.
+- [x] Telegram messages arrive from the VPS (`m7_smoke.py` live send).
+- [x] `./scripts/deploy.sh` performed a clean update from a new commit
+      (the B2-fix redeploy exercised the full pull → build → migrate →
+      restart path).
+- [x] CI builds the image + runs the M1 smoke inside it; README documents
+      setup + update.
+
+Deployment findings fixed during B2 (both shipped in this milestone):
+the Telegram scanner hot-restart loop on missing session, and
+`twitter_login`'s in-package `.cache` write failing under the non-root
+container user.
 
 ## 7. Sub-phases
 

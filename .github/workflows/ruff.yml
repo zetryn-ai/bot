@@ -64,3 +64,16 @@ jobs:
           python scripts/m7_smoke.py
       - name: pytest
         run: pytest
+
+  docker:
+    name: docker image builds
+    runs-on: ubuntu-latest
+    needs: lint
+    steps:
+      - uses: actions/checkout@v4
+      # Build-only (no registry): catches Dockerfile rot — the VPS builds this
+      # same image from a clone via scripts/deploy.sh (see M8 design doc).
+      - name: docker build
+        run: docker build -t zetryn-bot:ci .
+      - name: smoke inside image
+        run: docker run --rm zetryn-bot:ci python scripts/m1_smoke.py

@@ -39,9 +39,9 @@ owns all I/O: fetching, enrichment, wallet, signing, and submission.
 | **M3** | `python -m zetryn_bot` — concurrent runtime, crash-safe supervision, graceful shutdown | ✅ shipped |
 | **M4** | Paper-trading engine — risk-sized alerts become simulated positions at real Jupiter prices, auto-exit on TP/SL/time | ✅ shipped |
 | **M5** | Encrypted wallet + `LiveExecutor` — real signed swaps, gated behind layered safety guards | ✅ shipped |
-| M6 | Persistence (PostgreSQL: decision log, position state) | 📅 planned |
-| M7 | Observability (Telegram/Discord notifier, heartbeat) | 📅 planned |
-| M8 | Deployment (Docker, systemd) | 📅 planned |
+| **M6** | Persistence (PostgreSQL) — positions, trades, circuit breaker survive restarts; live positions reconciled on-chain at startup | ✅ shipped |
+| **M7** | Observability — Telegram notifier (trades, errors, rate-limits), heartbeat, crash dump | ✅ shipped |
+| **M8** | Deployment — Docker image, VPS compose, one-command deploy script | ✅ shipped |
 | M9 | API + dashboard | 📅 planned |
 | M10 | Specialized per-signal agent routing (sniper, graduation, KOL copy-trade) | 📅 planned |
 
@@ -142,6 +142,39 @@ guessing. Groups, in the order they appear:
 | Decision gates | `GATE_MIN_LIQUIDITY_USD` and friends — the hard filters a candidate must clear before it ever reaches the LLM |
 | Execution (M4) | `EXECUTION_ENABLED`, `RISK_*`, `EXIT_*` — paper-trading sizing and exit rules |
 | Wallet + live (M5) | `EXECUTION_MODE`, `WALLET_*`, `LIVE_*` — see [Going live](#going-live-m5) above |
+| Persistence (M6) | `DATABASE_URL`, `ENABLE_DECISION_LOG` — Postgres; unreachable DB falls back to in-memory, never crashes |
+| Notifications (M7) | `NOTIFY_ENABLED`, `TELEGRAM_BOT_TOKEN`, `TELEGRAM_CHAT_ID`, dedup window, heartbeat interval |
+
+## Deployment (M8)
+
+The bot ships as a Docker image and runs 24/7 under the Docker daemon's
+supervision — no systemd unit needed:
+
+```bash
+# Local: build + boot with zero config (rule-only scanners, nothing bought)
+docker build -t zetryn-bot .
+docker run --rm --env-file .env zetryn-bot
+```
+
+On a server, use [`docker-compose.vps.yml`](docker-compose.vps.yml)
+(`restart: unless-stopped`, `logs/` + `data/` bind mounts) and
+[`scripts/deploy.sh`](scripts/deploy.sh):
+
+```bash
+# One-time: clone, create the Postgres role/db, fill .env (chmod 600)
+git clone git@github.com:zetryn-ai/bot.git /opt/zetryn-bot
+# ... create role zetryn + database zetryn_bot on your Postgres,
+#     set DATABASE_URL in .env accordingly ...
+
+# Every update after that is one command, run on the server:
+cd /opt/zetryn-bot && ./scripts/deploy.sh
+# → git pull → docker compose build → alembic upgrade head → up -d → status
+```
+
+Design decisions (image layout, shared-Postgres trade-off, secrets handling):
+[docs/plans/2026-07-10-m8-deployment.md](docs/plans/2026-07-10-m8-deployment.md).
+Keep the VPS on `EXECUTION_MODE=paper` until you have deliberately walked
+through [Going live](#going-live-m5).
 
 ## Testing this repo
 

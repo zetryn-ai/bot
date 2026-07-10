@@ -21,7 +21,7 @@ appropriately on landing.
 | **M5** | Wallet management (encrypted keypair, LiveExecutor) | ✅ shipped | v0.5.0 | [2026-07-04-m5-wallet-management.md](docs/plans/2026-07-04-m5-wallet-management.md) |
 | **M6** | Persistence (PostgreSQL — DecisionLog, position state) | ✅ shipped | v0.6.0 | [2026-07-05-m6-persistence.md](docs/plans/2026-07-05-m6-persistence.md) |
 | **M7** | Observability (Telegram notifier, heartbeat, crash dump) | ✅ shipped | v0.7.0 | [2026-07-05-m7-observability.md](docs/plans/2026-07-05-m7-observability.md) |
-| **M8** | Deployment (Dockerfile, compose, VPS deploy) | 🚧 in-progress | v0.8.0 | [2026-07-10-m8-deployment.md](docs/plans/2026-07-10-m8-deployment.md) |
+| **M8** | Deployment (Dockerfile, compose, VPS deploy) | ✅ shipped | v0.8.0 | [2026-07-10-m8-deployment.md](docs/plans/2026-07-10-m8-deployment.md) |
 | **M9** | API + Dashboard (FastAPI + Next.js) | 📅 planned | v0.9.0 (or v1.0.0 cut) | TBD |
 | **M10** | Specialized strategy routing (per-signal agents: sniper / graduation / KOL copy-trade / confluence, incl. `PositionContext`) | 📅 planned | v0.10.0 | TBD |
 
