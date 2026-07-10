@@ -113,6 +113,7 @@ class TelegramScanner:
     async def stream(self, session: aiohttp.ClientSession) -> AsyncIterator[TokenCandidate]:
         if not self._channels:
             self._log.info("no channels configured — scanner idle")
+            await self._idle_forever()
             return
 
         client = TelegramClient(self._session_path, self._api_id, self._api_hash)
@@ -125,6 +126,7 @@ class TelegramScanner:
             await client.connect()
         except Exception as exc:
             self._log.error(f"connect failed: {exc} — scanner disabled")
+            await self._idle_forever()
             return
         if not await client.is_user_authorized():
             self._log.error(
@@ -133,12 +135,14 @@ class TelegramScanner:
                 self._session_path,
             )
             await client.disconnect()
+            await self._idle_forever()
             return
 
         channel_map = await self._resolve_channels(client)
         if not channel_map:
             self._log.warning("no channels resolved — scanner idle")
             await client.disconnect()
+            await self._idle_forever()
             return
 
         queue: asyncio.Queue[TokenCandidate] = asyncio.Queue()
@@ -176,6 +180,20 @@ class TelegramScanner:
         finally:
             watcher.cancel()
             await client.disconnect()
+
+    @staticmethod
+    async def _idle_forever() -> None:
+        """Park the producer without returning.
+
+        The orchestrator supervises producers with restart-on-exit, so a clean
+        ``return`` here means an immediate respawn — a hot loop re-logging the
+        same 'scanner disabled' error every second (seen on the first VPS
+        deploy, M8). The disabled states above are permanent for this process
+        lifetime (fixing them requires a login/config change + restart), so
+        sleeping forever is the honest behaviour.
+        """
+        while True:
+            await asyncio.sleep(3600)
 
     async def _resolve_channels(self, client: TelegramClient) -> dict[int, ChannelConfig]:
         """Resolve configured channel usernames to entity IDs."""

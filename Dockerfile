@@ -28,9 +28,13 @@ COPY --from=builder /install /usr/local
 
 # Pre-download the VADER lexicon so the twitter enricher never downloads at
 # runtime (the container may have no writable HOME cache and cold-start lag
-# would hit the first scan).
+# would hit the first scan). twitter_login writes a .cache dir INSIDE its own
+# site-packages at import time — pre-create it writable for the non-root user
+# or every cookie account fails with EACCES (seen on the first VPS deploy).
 RUN python -c "import nltk; nltk.download('vader_lexicon', quiet=True, download_dir='$NLTK_DATA')" \
-    && useradd --create-home --uid 1000 bot
+    && useradd --create-home --uid 1000 bot \
+    && mkdir -p /usr/local/lib/python3.12/site-packages/twitter_login/.cache \
+    && chown -R bot:bot /usr/local/lib/python3.12/site-packages/twitter_login/.cache
 
 WORKDIR /app
 # Alembic (migrations run as a one-off container in deploy.sh) and the smoke
