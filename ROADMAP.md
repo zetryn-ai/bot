@@ -25,15 +25,21 @@ appropriately on landing.
 | **M9** | API + Dashboard (FastAPI + Next.js) | 📅 planned | v0.10.0 (or v1.0.0 cut) | TBD |
 | **M10a** | Exit intelligence — framework lifecycle agent per position tick (`PositionContext`, trailing stop) | ✅ shipped | v0.9.0 | [2026-07-11-m10a-exit-intelligence.md](docs/plans/2026-07-11-m10a-exit-intelligence.md) |
 | **M10b** | Specialized entry routing (sniper / graduation / scanner fallback; KOL & confluence → M10c) | 🚧 in-progress (`feat/m10b-routing`) | v0.11.0 | [2026-07-12-m10b-entry-routing.md](docs/plans/2026-07-12-m10b-entry-routing.md) |
+| **M10c** | Event-driven agents (KOL copy-trade / smart-money confluence / dip-buy / growth-detector triage) — needs the bot-side infra M10b deliberately deferred: real-time wallet event feeds (Helius webhooks / GMGN wallet streams, `KOLRegistry`, per-mint accumulation windows) and a per-token time-series store (recovery metrics, organic-growth classification) | 📅 planned | v0.12.0 | TBD |
 
-**On M10:** split 2026-07-11 into M10a (exit intelligence — shipped) and
-M10b (entry routing). M3 wires a single general agent (`build_scanner`). Routing each
-signal type to its specialized `zetryn-trading` agent (`build_sniper`,
-`build_graduation`, `build_kol_copytrade`, …) is deferred to its own milestone.
-It needs `PositionContext` / `GraduationContext` etc., which only become
-meaningful once execution (M4) and persistence (M6) exist — so M10 sits
-**after M6**. `BotPipeline` is already agent-agnostic, so M10 is "several
-pipelines + a dispatcher," not a rewrite of M3.
+**On M10:** split 2026-07-11/12 into three parts. **M10a** (exit
+intelligence — shipped v0.9.0) wires the framework's PL1 lifecycle agent per
+position tick. **M10b** (entry routing) dispatches candidates whose contexts
+the bot can already build: sniper (`TradingContext`) and graduation
+(`GraduationContext`, fill-time from our own launch observations), with the
+generalist scanner as fallback. **M10c** covers the remaining four framework
+agents — KOL copy-trade (`KOLContext` + `KOLRegistry`), smart-money
+confluence (`ConfluenceContext`, rolling per-mint wallet accumulation),
+early-stage dip-buy (`DipBuyContext`, recovery time-series), and the organic
+growth detector (triage) — each blocked not on routing but on bot-side
+event infrastructure that doesn't exist yet (real-time wallet feeds, a
+per-token time-series store). `BotPipeline` is agent-agnostic since M2, so
+all of M10 is "several pipelines + a dispatcher," not a rewrite of M3.
 
 A `v1.0.0` stable release is cut once **M2** ships at minimum (the first
 end-to-end zetryn-trading-integrated bot). The exact cutoff between
