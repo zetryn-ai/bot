@@ -39,6 +39,7 @@ class PositionTracker:
         execution_mode: str = "paper",
         notifier=None,
         dead_route_after: int = 10,  # consecutive no-route sweeps before a dead-route close
+        lifecycle=None,  # LifecycleEngine | None — None keeps static TP/SL/max-hold exits
     ) -> None:
         from zetryn_bot.notify.telegram import NullNotifier
 
@@ -52,6 +53,7 @@ class PositionTracker:
         self._execution_mode = execution_mode
         self._notifier = notifier or NullNotifier()
         self._dead_route_after = dead_route_after
+        self._lifecycle = lifecycle
         self._route_fails: dict[str, int] = {}
         self._open: dict[str, Position] = {}
         self._closed: list[ClosedTrade] = []
@@ -112,6 +114,26 @@ class PositionTracker:
             return "max_hold"
         return None
 
+    async def _evaluate_exit(self, position: Position, current_sol: float) -> str | None:
+        """Exit decision for one position: framework lifecycle agent (M10)
+        when configured, else the static TP/SL/max-hold rules."""
+        if self._lifecycle is None:
+            return self._exit_reason(position, current_sol)
+        decision = await self._lifecycle.evaluate(
+            position, current_sol, self._now() - position.opened_at
+        )
+        if decision is None or decision.action == "hold":
+            return None
+        reason = self._lifecycle.close_reason(decision)
+        log.info(
+            "lifecycle exit {} — action={} reason={} | {}",
+            position.symbol or position.mint[:8],
+            decision.action,
+            reason,
+            "; ".join(decision.reasons[:2]),
+        )
+        return reason
+
     async def _quote_with_status(self, mint: str, atomic: int):
         """Quote with HTTP status when the client supports it (duck-typed so
         test doubles that only implement ``quote()`` keep working; their
@@ -124,6 +146,8 @@ class PositionTracker:
     async def _finalize_close(self, mint: str, position: Position, trade: ClosedTrade) -> None:
         del self._open[mint]
         self._route_fails.pop(mint, None)
+        if self._lifecycle is not None:
+            self._lifecycle.forget(mint)
         self._closed.append(trade)
         if self._repo is not None:
             await self._repo.delete_open(mint)
@@ -178,7 +202,7 @@ class PositionTracker:
 
             self._route_fails.pop(mint, None)
             current_sol = lamports_to_sol(q.out_amount)
-            reason = self._exit_reason(position, current_sol)
+            reason = await self._evaluate_exit(position, current_sol)
             if reason is None:
                 continue
             trade = await self._executor.sell(position, reason)

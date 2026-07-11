@@ -109,6 +109,17 @@ class Settings(BaseSettings):
     exit_max_hold_s: float = 1800.0  # force-close after 30 min
     exec_poll_interval_s: float = 5.0  # position monitor poll cadence
 
+    # ── Exit intelligence (M10 — framework lifecycle agent) ─────────────────
+    # Off by default: exits stay static TP/SL/max-hold. On, the framework's
+    # PL1 lifecycle agent (rule mode, deterministic) evaluates each open
+    # position per sweep: emergency → hard SL → time stop → trailing stop →
+    # TP. Adds the trailing stop: after a run-up past the arm threshold, exit
+    # when the position gives back the configured fraction of its peak —
+    # "momentum died" exits before the hard SL burns the gain.
+    lifecycle_enabled: bool = False
+    exit_trailing_arm_pnl_pct: float = 0.20  # trailing arms after +20% peak
+    exit_trailing_drawdown_pct: float = 0.50  # exit at 50% given back from peak
+
     # ── Wallet + live execution (M5) ─────────────────────────────────────────
     # execution_mode selects the Executor when execution_enabled=True.
     # "live" additionally requires the wallet keyfile to decrypt successfully —

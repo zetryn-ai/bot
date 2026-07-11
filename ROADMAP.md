@@ -22,10 +22,12 @@ appropriately on landing.
 | **M6** | Persistence (PostgreSQL — DecisionLog, position state) | ✅ shipped | v0.6.0 | [2026-07-05-m6-persistence.md](docs/plans/2026-07-05-m6-persistence.md) |
 | **M7** | Observability (Telegram notifier, heartbeat, crash dump) | ✅ shipped | v0.7.0 | [2026-07-05-m7-observability.md](docs/plans/2026-07-05-m7-observability.md) |
 | **M8** | Deployment (Dockerfile, compose, VPS deploy) | ✅ shipped | v0.8.0 | [2026-07-10-m8-deployment.md](docs/plans/2026-07-10-m8-deployment.md) |
-| **M9** | API + Dashboard (FastAPI + Next.js) | 📅 planned | v0.9.0 (or v1.0.0 cut) | TBD |
-| **M10** | Specialized strategy routing (per-signal agents: sniper / graduation / KOL copy-trade / confluence, incl. `PositionContext`) | 📅 planned | v0.10.0 | TBD |
+| **M9** | API + Dashboard (FastAPI + Next.js) | 📅 planned | v0.10.0 (or v1.0.0 cut) | TBD |
+| **M10a** | Exit intelligence — framework lifecycle agent per position tick (`PositionContext`, trailing stop) | ✅ shipped | v0.9.0 | [2026-07-11-m10a-exit-intelligence.md](docs/plans/2026-07-11-m10a-exit-intelligence.md) |
+| **M10b** | Specialized entry routing (per-signal agents: sniper / graduation / KOL copy-trade / confluence) | 📅 planned | v0.11.0 | TBD |
 
-**On M10:** M3 wires a single general agent (`build_scanner`). Routing each
+**On M10:** split 2026-07-11 into M10a (exit intelligence — shipped) and
+M10b (entry routing). M3 wires a single general agent (`build_scanner`). Routing each
 signal type to its specialized `zetryn-trading` agent (`build_sniper`,
 `build_graduation`, `build_kol_copytrade`, …) is deferred to its own milestone.
 It needs `PositionContext` / `GraduationContext` etc., which only become

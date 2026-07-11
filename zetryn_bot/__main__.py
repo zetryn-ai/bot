@@ -209,6 +209,29 @@ async def build_orchestrator(settings: Settings) -> Orchestrator:
         )
         await risk.load()  # restore today's circuit-breaker PnL
 
+        # M10: framework lifecycle agent replaces the static exit triple.
+        lifecycle = None
+        if settings.lifecycle_enabled:
+            from zetryn_bot.execution.lifecycle import LifecycleEngine
+
+            lifecycle = LifecycleEngine(
+                take_profit_pct=settings.exit_tp_pct,
+                stop_loss_pct=settings.exit_sl_pct,
+                max_hold_s=settings.exit_max_hold_s,
+                trailing_arm_pnl_pct=settings.exit_trailing_arm_pnl_pct,
+                trailing_drawdown_pct=settings.exit_trailing_drawdown_pct,
+            )
+            log.info(
+                "lifecycle agent ENABLED — framework rule exits "
+                "(TP +{:.0%}, SL -{:.0%}, max-hold {:.0f}s, trailing arm "
+                "+{:.0%} / drawdown {:.0%})",
+                settings.exit_tp_pct,
+                settings.exit_sl_pct,
+                settings.exit_max_hold_s,
+                settings.exit_trailing_arm_pnl_pct,
+                settings.exit_trailing_drawdown_pct,
+            )
+
         tracker = PositionTracker(
             executor,
             jupiter,
@@ -217,6 +240,7 @@ async def build_orchestrator(settings: Settings) -> Orchestrator:
             repo=position_repo,
             execution_mode=settings.execution_mode,
             notifier=notifier,
+            lifecycle=lifecycle,
         )
         await tracker.load_and_reconcile(wallet_pubkey, rpc)  # restore + (live) verify on-chain
 
