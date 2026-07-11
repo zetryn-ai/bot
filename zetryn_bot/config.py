@@ -103,6 +103,13 @@ class Settings(BaseSettings):
     # set to "alert,watch" to paper-trade the watchlist (the analyst rarely
     # emits alert on fresh memecoins, so alert-only can sit idle for a long time).
     risk_buy_actions: Annotated[list[str], NoDecode] = Field(default_factory=lambda: ["alert"])
+    # Enricher names that must be present in candidate.sources before a buy
+    # (CSV; empty = disabled). Default rugcheck: enrichers fail open, so a
+    # rate-limited RugCheck would otherwise let an unverified contract be
+    # bought with default "safe" flags.
+    risk_require_sources: Annotated[list[str], NoDecode] = Field(
+        default_factory=lambda: ["rugcheck"]
+    )
     risk_daily_loss_limit_sol: float = 1.0  # circuit breaker: stop buying past this daily loss
     exit_tp_pct: float = 0.30  # take profit at +30%
     exit_sl_pct: float = 0.15  # stop loss at -15%
@@ -158,7 +165,12 @@ class Settings(BaseSettings):
 
     # CSV → list normalisation for env vars passed as comma-separated strings
     @field_validator(
-        "helius_api_keys", "birdeye_api_keys", "scanners_enabled", "risk_buy_actions", mode="before"
+        "helius_api_keys",
+        "birdeye_api_keys",
+        "scanners_enabled",
+        "risk_buy_actions",
+        "risk_require_sources",
+        mode="before",
     )
     @classmethod
     def _csv_to_list(cls, v):

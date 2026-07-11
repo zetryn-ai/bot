@@ -104,3 +104,25 @@ async def test_crashing_scanner_does_not_stop_the_runtime():
     finally:
         await orch.shutdown()
     assert {c.address for c, _ in sink.decisions} == {"A", "B"}
+
+
+@pytest.mark.asyncio
+async def test_known_quote_mints_filtered_before_pipeline():
+    """SOL/USDC leaking from a scanner never reach the queue/pipeline."""
+    usdc = "EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v"
+    sol = "So11111111111111111111111111111111111111112"
+    sink = ListSink()
+    orch = Orchestrator(
+        _passthrough_pipeline(sink),
+        [_FakeScanner("s1", [_cand(usdc), _cand(sol), _cand("RealMint111")])],
+        workers=1,
+    )
+    await orch.start()
+    try:
+        await _wait_for(lambda: len(sink.decisions) >= 1)
+        await asyncio.sleep(0.05)  # allow any (wrong) extra items to flush
+    finally:
+        await orch.shutdown()
+
+    seen = [c.address for c, _ in sink.decisions]
+    assert seen == ["RealMint111"]

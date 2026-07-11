@@ -198,6 +198,7 @@ async def build_orchestrator(settings: Settings) -> Orchestrator:
                 max_positions=settings.risk_max_positions,
                 daily_loss_limit_sol=settings.risk_daily_loss_limit_sol,
                 buy_actions=tuple(settings.risk_buy_actions),
+                require_sources=tuple(settings.risk_require_sources),
                 take_profit_pct=settings.exit_tp_pct,
                 stop_loss_pct=settings.exit_sl_pct,
                 max_hold_s=settings.exit_max_hold_s,

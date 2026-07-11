@@ -80,3 +80,24 @@ async def test_circuit_breaker_resets_next_day():
     await rm.record_close(-0.6)  # day 1
     # day 2 lookup happens inside evaluate -> rolls over, breaker resets
     assert rm.evaluate(_cand(), _decision(), 0) is not None
+
+
+def test_require_sources_blocks_unverified_contract():
+    rm = RiskManager(RiskConfig(require_sources=("rugcheck",)))
+    cand = TokenCandidate(address="MintA", symbol="AAA", sources=["pumpfun_migration", "helius"])
+    d = Decision(action="alert", confidence=0.9)
+    assert rm.evaluate(cand, d, open_count=0) is None  # rugcheck missing → no buy
+
+
+def test_require_sources_allows_verified_contract():
+    rm = RiskManager(RiskConfig(require_sources=("rugcheck",)))
+    cand = TokenCandidate(address="MintA", symbol="AAA", sources=["pumpfun_migration", "rugcheck"])
+    d = Decision(action="alert", confidence=0.9)
+    assert rm.evaluate(cand, d, open_count=0) is not None
+
+
+def test_require_sources_empty_disables_check():
+    rm = RiskManager(RiskConfig())  # default: no requirement at the dataclass level
+    cand = TokenCandidate(address="MintA", symbol="AAA", sources=["pumpfun_migration"])
+    d = Decision(action="alert", confidence=0.9)
+    assert rm.evaluate(cand, d, open_count=0) is not None

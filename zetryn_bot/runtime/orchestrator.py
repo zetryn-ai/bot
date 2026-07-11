@@ -23,6 +23,20 @@ from zetryn_bot.utils.supervisor import supervise
 
 log = logger.bind(component="runtime.orchestrator")
 
+# Well-known base/quote mints that scanners sometimes emit as "candidates" —
+# the pumpfun-migration scanner surfaces the quote side of a new pool, and
+# USDC was observed flowing through the entire enrichment pipeline only to be
+# rejected as "rug risk" (Circle keeps its mint authority active). Filtering
+# here, before dedup, covers every scanner and saves the enricher API budget
+# those tokens would burn on every sighting.
+KNOWN_QUOTE_MINTS: frozenset[str] = frozenset(
+    {
+        "So11111111111111111111111111111111111111112",  # SOL / wSOL
+        "EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v",  # USDC
+        "Es9vMFrzaCERmJfrF4H2FYD4KCoNkY11McCe8BenwNYB",  # USDT
+    }
+)
+
 
 class Orchestrator:
     """Owns the queue, scanner producer tasks, worker pool, and lifecycle."""
@@ -51,6 +65,8 @@ class Orchestrator:
     async def _produce(self, scanner: Scanner, session: aiohttp.ClientSession) -> None:
         """Stream one scanner's candidates onto the queue, skipping dups."""
         async for candidate in scanner.stream(session):
+            if candidate.address in KNOWN_QUOTE_MINTS:
+                continue  # SOL/USDC/USDT leaking through as "candidates"
             if self.dedup.seen(candidate.address):
                 continue
             await self.queue.put(candidate)  # blocks (backpressure) when full

@@ -39,6 +39,12 @@ class RiskConfig:
     # confidence — a last-resort guard against a misconfigured base size or
     # confidence when real funds are on the line. None = no extra cap (paper).
     max_trade_sol: float | None = None
+    # Enricher names that MUST appear in candidate.sources before a buy.
+    # Enrichers fail open (a rate-limited RugCheck leaves the candidate with
+    # default "safe" contract flags), so this is the buy-side backstop: never
+    # put money on a contract whose safety data never actually arrived.
+    # Empty = no requirement (M4/M5 behaviour).
+    require_sources: tuple[str, ...] = ()
 
 
 class RiskManager:
@@ -81,6 +87,16 @@ class RiskManager:
             decision.action not in self._cfg.buy_actions
             or decision.confidence < self._cfg.min_confidence
         ):
+            return None
+
+        # Gate 1b — required enrichment actually happened (fail-closed buys).
+        missing = [s for s in self._cfg.require_sources if s not in candidate.sources]
+        if missing:
+            log.info(
+                "skipping {} — required enrichment missing: {} (fail-closed buy policy)",
+                candidate.symbol or candidate.address[:8],
+                ", ".join(missing),
+            )
             return None
 
         # Gate 2 — daily-loss circuit breaker.

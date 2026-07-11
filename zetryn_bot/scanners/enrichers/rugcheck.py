@@ -117,22 +117,39 @@ class RugcheckEnricher:
                 pass
 
         url = f"{RUGCHECK_BASE}/tokens/{mint}/report/summary"
+        result = None
         try:
-            async with session.get(url, timeout=aiohttp.ClientTimeout(total=8)) as resp:
-                if resp.status == 404:
-                    return None
-                if resp.status == 429:
-                    self._log.debug("rate limited — skipping this token")
-                    return None
-                if resp.status != 200:
-                    self._log.debug(f"status {resp.status} for {mint[:8]}...")
-                    return None
-                data = await resp.json()
-                result = _parse_report(data)
+            # 429 gets two bounded retries (1s, 2s): a missing RugCheck report
+            # means the candidate is evaluated with NO contract-safety data
+            # (fail-open), so a transient rate limit is worth a short wait.
+            # The final failure is a WARNING — "rate limited" flows to the M7
+            # log bridge → Telegram (deduped) instead of vanishing at debug.
+            for attempt in range(3):
+                async with session.get(url, timeout=aiohttp.ClientTimeout(total=8)) as resp:
+                    if resp.status == 404:
+                        return None
+                    if resp.status == 429:
+                        if attempt < 2:
+                            await asyncio.sleep(1.0 * (attempt + 1))
+                            continue
+                        self._log.warning(
+                            "RugCheck rate limited (3 attempts) — {} evaluated without "
+                            "contract-safety data",
+                            mint[:8],
+                        )
+                        return None
+                    if resp.status != 200:
+                        self._log.debug(f"status {resp.status} for {mint[:8]}...")
+                        return None
+                    data = await resp.json()
+                    result = _parse_report(data)
+                    break
         except asyncio.CancelledError:
             raise
         except Exception as exc:
             self._log.debug(f"fetch error for {mint[:8]}...: {exc}")
+            return None
+        if result is None:
             return None
 
         # Cache successful parses only.
