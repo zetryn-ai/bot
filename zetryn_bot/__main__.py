@@ -199,6 +199,8 @@ async def build_orchestrator(settings: Settings) -> Orchestrator:
                 daily_loss_limit_sol=settings.risk_daily_loss_limit_sol,
                 buy_actions=tuple(settings.risk_buy_actions),
                 require_sources=tuple(settings.risk_require_sources),
+                blocked_buy_sources=tuple(settings.risk_blocked_buy_sources),
+                source_conf_floors=settings.parsed_source_conf_floors(),
                 take_profit_pct=settings.exit_tp_pct,
                 stop_loss_pct=settings.exit_sl_pct,
                 max_hold_s=settings.exit_max_hold_s,
@@ -242,6 +244,7 @@ async def build_orchestrator(settings: Settings) -> Orchestrator:
             execution_mode=settings.execution_mode,
             notifier=notifier,
             lifecycle=lifecycle,
+            reentry_cooldown_s=settings.risk_reentry_cooldown_s,
         )
         await tracker.load_and_reconcile(wallet_pubkey, rpc)  # restore + (live) verify on-chain
 

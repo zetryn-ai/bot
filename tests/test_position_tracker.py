@@ -198,3 +198,30 @@ async def test_route_fail_counter_resets_on_success():
     assert tracker.open_count() == 0
     trade = tracker.stats()
     assert trade["closed"] == 1
+
+
+@pytest.mark.asyncio
+async def test_reentry_cooldown_blocks_then_expires():
+    clock = _Clock()
+    jup = _FakeJupiter(current_sol=0.30)  # +50% -> instant TP
+    risk = RiskManager(RiskConfig())
+    tracker = PositionTracker(PaperExecutor(jup), jup, risk, now_fn=clock, reentry_cooldown_s=14400)
+    await _open(tracker)
+    await tracker.check_once()  # TP close -> cooldown starts
+    assert tracker.open_count() == 0
+    assert tracker.in_cooldown("MintA") is True
+    assert tracker.in_cooldown("MintB") is False
+
+    clock.t += 14401
+    assert tracker.in_cooldown("MintA") is False  # expired
+
+
+@pytest.mark.asyncio
+async def test_cooldown_disabled_by_default():
+    clock = _Clock()
+    jup = _FakeJupiter(current_sol=0.30)
+    risk = RiskManager(RiskConfig())
+    tracker = PositionTracker(PaperExecutor(jup), jup, risk, now_fn=clock)
+    await _open(tracker)
+    await tracker.check_once()
+    assert tracker.in_cooldown("MintA") is False

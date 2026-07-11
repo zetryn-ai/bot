@@ -174,6 +174,7 @@ def _parse_pool(pool: dict, token_map: dict, *, source: str) -> TokenCandidate |
     buys_5m = int(txns_m5.get("buys", 0) or 0)
     sells_5m = int(txns_m5.get("sells", 0) or 0)
     vol_m5 = float(attrs.get("volume_usd", {}).get("m5", 0) or 0)
+    price_change = attrs.get("price_change_percentage", {}) or {}
     liquidity = float(attrs.get("reserve_in_usd") or 0)
     mcap = float(attrs.get("fdv_usd") or attrs.get("market_cap_usd") or 0)
     price = float(attrs.get("base_token_price_usd") or 0)
@@ -189,6 +190,9 @@ def _parse_pool(pool: dict, token_map: dict, *, source: str) -> TokenCandidate |
         market_cap_usd=mcap,
         price_usd=price,
         volume_5m_usd=vol_m5,
+        price_change_5m_pct=float(price_change.get("m5", 0) or 0),
+        price_change_1h_pct=float(price_change.get("h1", 0) or 0),
+        price_change_6h_pct=float(price_change.get("h6", 0) or 0),
         txns_5m=buys_5m + sells_5m,
         buys_5m=buys_5m,
         sells_5m=sells_5m,

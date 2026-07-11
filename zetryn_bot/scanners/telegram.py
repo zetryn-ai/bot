@@ -214,18 +214,21 @@ class TelegramScanner:
         return channel_map
 
     async def _watch_connection(self, client: TelegramClient) -> None:
-        """Background task: keep the Telethon client connected and healthy."""
+        """Background task: keep the Telethon client connected and healthy.
+
+        A passive liveness poll — Telethon runs its own receive loop once
+        connected, so this must never touch it. The previous implementation
+        wrapped ``run_until_disconnected()`` in ``wait_for(timeout=30)``:
+        every timeout CANCELLED Telethon's internal wait, tearing the
+        connection down and reconnecting — 1,269 self-inflicted
+        "disconnected — reconnecting" cycles in a 10h VPS window.
+        """
         while True:
             try:
-                await asyncio.wait_for(client.run_until_disconnected(), timeout=30.0)
-            except TimeoutError:
                 if not client.is_connected():
                     self._log.warning("disconnected — reconnecting...")
-                    try:
-                        await client.connect()
-                    except Exception as exc:
-                        self._log.error(f"reconnect failed: {exc}")
-                        await asyncio.sleep(self._reconnect_delay_s)
+                    await client.connect()
+                await asyncio.sleep(30.0)
             except FloodWaitError as exc:
                 self._log.warning(f"FloodWait {exc.seconds}s")
                 await asyncio.sleep(min(exc.seconds, 300))
@@ -233,7 +236,7 @@ class TelegramScanner:
                 break
             except Exception as exc:
                 self._log.error(f"watch error: {type(exc).__name__}: {exc}")
-                await asyncio.sleep(15)
+                await asyncio.sleep(self._reconnect_delay_s)
 
 
 def _extract_solana_addresses(text: str) -> list[str]:

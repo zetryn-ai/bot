@@ -110,6 +110,8 @@ class ExecutionSink:
         async with self._lock:
             if self._tracker.holds(candidate.address):
                 return
+            if self._tracker.in_cooldown(candidate.address):
+                return  # churn guard: recently closed this mint, don't re-enter yet
             req = self._risk.evaluate(candidate, decision, self._tracker.open_count())
             if req is None:
                 return

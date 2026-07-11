@@ -60,7 +60,10 @@ def build_enabled_scanners(settings: Settings) -> list[Scanner]:
 
     if settings.birdeye_api_keys:
         pool = BirdeyeKeyPool(settings.birdeye_api_keys)
-        scanners += [BirdeyeTrending(pool), BirdeyeNewListing(pool)]
+        scanners += [
+            BirdeyeTrending(pool, poll_interval_s=settings.birdeye_trending_poll_s),
+            BirdeyeNewListing(pool, poll_interval_s=settings.birdeye_new_listing_poll_s),
+        ]
     else:
         log.warning("birdeye scanners skipped — BIRDEYE_API_KEYS empty")
 

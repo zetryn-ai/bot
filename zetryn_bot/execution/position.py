@@ -40,6 +40,7 @@ class PositionTracker:
         notifier=None,
         dead_route_after: int = 10,  # consecutive no-route sweeps before a dead-route close
         lifecycle=None,  # LifecycleEngine | None — None keeps static TP/SL/max-hold exits
+        reentry_cooldown_s: float = 0.0,  # block re-buying a mint this long after ANY close
     ) -> None:
         from zetryn_bot.notify.telegram import NullNotifier
 
@@ -54,6 +55,15 @@ class PositionTracker:
         self._notifier = notifier or NullNotifier()
         self._dead_route_after = dead_route_after
         self._lifecycle = lifecycle
+        # Re-entry cooldown (churn guard): the 10h VPS dry run had 6 mints
+        # account for 32/48 trades at net -0.076 SOL — trending scanners
+        # re-emit the same token every poll, the 60s dedup expires, and the
+        # analyst re-approves a fresh buy minutes after a stop-loss.
+        # Re-entries after take-profit were ALSO net negative in that data
+        # (mogdog: 3 TP +0.061 vs 7 SL -0.075), so the cooldown is flat
+        # across close reasons.
+        self._reentry_cooldown_s = reentry_cooldown_s
+        self._cooldowns: dict[str, float] = {}  # mint -> monotonic deadline
         self._route_fails: dict[str, int] = {}
         self._open: dict[str, Position] = {}
         self._closed: list[ClosedTrade] = []
@@ -63,6 +73,23 @@ class PositionTracker:
 
     def holds(self, mint: str) -> bool:
         return mint in self._open
+
+    def in_cooldown(self, mint: str) -> bool:
+        """True while ``mint`` is inside its post-close re-entry cooldown."""
+        deadline = self._cooldowns.get(mint)
+        if deadline is None:
+            return False
+        if self._now() >= deadline:
+            del self._cooldowns[mint]
+            return False
+        return True
+
+    def _start_cooldown(self, mint: str, *, elapsed_s: float = 0.0) -> None:
+        if self._reentry_cooldown_s <= 0:
+            return
+        remaining = self._reentry_cooldown_s - elapsed_s
+        if remaining > 0:
+            self._cooldowns[mint] = self._now() + remaining
 
     async def add(self, position: Position) -> None:
         """Register a freshly-opened position, stamping its open time + persisting."""
@@ -101,6 +128,14 @@ class PositionTracker:
             len(self._open),
             reviewed,
         )
+        # Rebuild re-entry cooldowns from recent closed trades — otherwise a
+        # container restart would reset every cooldown and churn could resume.
+        if self._reentry_cooldown_s > 0:
+            recent = await self._repo.load_recent_close_ages(self._reentry_cooldown_s)
+            for mint, elapsed_s in recent:
+                self._start_cooldown(mint, elapsed_s=elapsed_s)
+            if recent:
+                log.info("restored {} re-entry cooldown(s) from closed trades", len(recent))
 
     def _exit_reason(self, position: Position, current_sol: float) -> str | None:
         pnl_pct = (
@@ -146,6 +181,7 @@ class PositionTracker:
     async def _finalize_close(self, mint: str, position: Position, trade: ClosedTrade) -> None:
         del self._open[mint]
         self._route_fails.pop(mint, None)
+        self._start_cooldown(mint)
         if self._lifecycle is not None:
             self._lifecycle.forget(mint)
         self._closed.append(trade)

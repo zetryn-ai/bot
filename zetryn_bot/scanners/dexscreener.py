@@ -157,6 +157,7 @@ def enrich_from_pair(token: TokenCandidate, pair: dict) -> TokenCandidate:
     liquidity = pair.get("liquidity", {}) or {}
     volume = pair.get("volume", {}) or {}
     txns = pair.get("txns", {}) or {}
+    price_change = pair.get("priceChange", {}) or {}
 
     updates: dict = {
         "liquidity_usd": float(liquidity.get("usd", 0) or 0),
@@ -164,6 +165,10 @@ def enrich_from_pair(token: TokenCandidate, pair: dict) -> TokenCandidate:
         "price_usd": float(pair.get("priceUsd", 0) or 0),
         "volume_5m_usd": float(volume.get("m5", 0) or 0),
         "volume_1h_usd": float(volume.get("h1", 0) or 0),
+        # Momentum direction for the AI analyst (m5/h1/h6 percent change).
+        "price_change_5m_pct": float(price_change.get("m5", 0) or 0),
+        "price_change_1h_pct": float(price_change.get("h1", 0) or 0),
+        "price_change_6h_pct": float(price_change.get("h6", 0) or 0),
     }
 
     txns_5m = txns.get("m5", {}) or {}

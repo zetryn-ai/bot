@@ -8,7 +8,7 @@ breaker, and max concurrent positions.
 
 from __future__ import annotations
 
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from datetime import date
 
 from loguru import logger
@@ -45,6 +45,16 @@ class RiskConfig:
     # put money on a contract whose safety data never actually arrived.
     # Empty = no requirement (M4/M5 behaviour).
     require_sources: tuple[str, ...] = ()
+    # Primary sources (candidate.sources[0], the discovering scanner) whose
+    # candidates are never bought. 10h VPS data: dexscreener_boost went 0/3,
+    # -0.077 SOL — a boost is PAID promotion by the dev, i.e. an
+    # exit-liquidity signal, not a buy signal. Decisions are still logged.
+    blocked_buy_sources: tuple[str, ...] = ()
+    # Per-primary-source minimum confidence override (stricter than
+    # min_confidence). Same 10h data: geckoterminal_trending is a lagging
+    # source (tokens trend AFTER pumping) — its sub-0.65 buys were mostly
+    # stop-losses while the 0.65+ band won 33% vs 23% below.
+    source_conf_floors: dict[str, float] = field(default_factory=dict)
 
 
 class RiskManager:
@@ -96,6 +106,26 @@ class RiskManager:
                 "skipping {} — required enrichment missing: {} (fail-closed buy policy)",
                 candidate.symbol or candidate.address[:8],
                 ", ".join(missing),
+            )
+            return None
+
+        # Gate 1c — per-source buy policy (primary source = discovering scanner).
+        primary = candidate.sources[0] if candidate.sources else ""
+        if primary in self._cfg.blocked_buy_sources:
+            log.info(
+                "skipping {} — source {} is buy-blocked (policy)",
+                candidate.symbol or candidate.address[:8],
+                primary,
+            )
+            return None
+        floor = self._cfg.source_conf_floors.get(primary)
+        if floor is not None and decision.confidence < floor:
+            log.info(
+                "skipping {} — source {} needs confidence >= {} (got {:.2f})",
+                candidate.symbol or candidate.address[:8],
+                primary,
+                floor,
+                decision.confidence,
             )
             return None
 

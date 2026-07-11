@@ -79,6 +79,14 @@ class Settings(BaseSettings):
     gecko_new_pools_poll_s: float = 15.0
     gecko_trending_poll_s: float = 45.0
 
+    # Birdeye poll cadence. Standard (free) keys carry 30,000 CU/MONTH each
+    # (verified 2026-07-11: trending=40 CU/call, new_listing=30 CU/call) —
+    # the old 60s/45s defaults burned ~115k CU/day and exhausted a 5-key pool
+    # in ~31 hours. At 1800s both, a 5-key pool spends ~3.4k CU/day and
+    # survives 7x24 indefinitely. Lower these only on a paid plan.
+    birdeye_trending_poll_s: float = 1800.0
+    birdeye_new_listing_poll_s: float = 1800.0
+
     # ── Decision gate thresholds ────────────────────────────────────────────
     # These feed the framework's ScannerConfig, which the three hard gates
     # (safety / intel / market) check BEFORE the LLM analyst runs. Defaults
@@ -110,6 +118,20 @@ class Settings(BaseSettings):
     risk_require_sources: Annotated[list[str], NoDecode] = Field(
         default_factory=lambda: ["rugcheck"]
     )
+    # Churn guard: block re-buying a mint for this long after ANY close.
+    # 10h dry-run data: 6 mints = 32/48 trades at net -0.076 SOL, re-buy
+    # cycles 5-136 min after close; 4h covers all observed churn with margin.
+    # 0 disables.
+    risk_reentry_cooldown_s: float = 14400.0
+    # Primary sources never bought (CSV). dexscreener_boost = paid promotion
+    # (0/3, -0.077 SOL in the same data) — exit-liquidity signal.
+    risk_blocked_buy_sources: Annotated[list[str], NoDecode] = Field(
+        default_factory=lambda: ["dexscreener_boost"]
+    )
+    # Per-source confidence floor, "source:floor" CSV. geckoterminal_trending
+    # lags (tokens trend AFTER pumping): its 0.65+ buys won 33% vs 23% below.
+    # If it still loses money with the floor, move it to the block list above.
+    risk_source_conf_floors: str = "geckoterminal_trending:0.68"
     risk_daily_loss_limit_sol: float = 1.0  # circuit breaker: stop buying past this daily loss
     exit_tp_pct: float = 0.30  # take profit at +30%
     exit_sl_pct: float = 0.15  # stop loss at -15%
@@ -164,12 +186,26 @@ class Settings(BaseSettings):
     heartbeat_interval_s: float = 3600.0
 
     # CSV → list normalisation for env vars passed as comma-separated strings
+    def parsed_source_conf_floors(self) -> dict[str, float]:
+        """Parse ``risk_source_conf_floors`` ("src:0.68,src2:0.7") into a dict."""
+        floors: dict[str, float] = {}
+        for part in _parse_csv(self.risk_source_conf_floors):
+            if ":" not in part:
+                continue
+            src, _, val = part.partition(":")
+            try:
+                floors[src.strip()] = float(val)
+            except ValueError:
+                continue
+        return floors
+
     @field_validator(
         "helius_api_keys",
         "birdeye_api_keys",
         "scanners_enabled",
         "risk_buy_actions",
         "risk_require_sources",
+        "risk_blocked_buy_sources",
         mode="before",
     )
     @classmethod

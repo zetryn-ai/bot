@@ -84,6 +84,22 @@ class PositionRepo:
                 )
             )
 
+    async def load_recent_close_ages(self, within_s: float) -> list[tuple[str, float]]:
+        """Return ``(mint, seconds_since_close)`` for trades closed in the last
+        ``within_s`` seconds — used to rebuild re-entry cooldowns after a
+        restart so churn can't resume by bouncing the container."""
+        cutoff = datetime.now(UTC) - timedelta(seconds=within_s)
+        async with self._sf() as session:
+            rows = (
+                await session.execute(
+                    select(ClosedTradeModel.mint, ClosedTradeModel.closed_at).where(
+                        ClosedTradeModel.closed_at >= cutoff
+                    )
+                )
+            ).all()
+        wall_now = datetime.now(UTC)
+        return [(mint, (wall_now - closed_at).total_seconds()) for mint, closed_at in rows]
+
     async def load_open(self, *, now_fn=time.monotonic) -> list[Position]:
         """Load status='open' positions, rebuilding ``opened_at`` as a monotonic
         value consistent with the running clock (so ``max_hold_s`` still works)."""

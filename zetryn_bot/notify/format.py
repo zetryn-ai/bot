@@ -83,7 +83,7 @@ def build_trade_meta(candidate: TokenCandidate, decision: Decision) -> str:
 
 def format_open(position: Position) -> str:
     header = (
-        f"🟢 OPENED\n"
+        f"🔵 OPENED\n"
         f"Size: {position.size_sol:.4f} SOL · TP {position.take_profit_pct:.0%} · "
         f"SL {position.stop_loss_pct:.0%} · Max hold {position.max_hold_s / 60:.0f}min\n"
         "──────────────\n"

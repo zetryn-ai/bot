@@ -62,6 +62,9 @@ def to_token_input(candidate: TokenCandidate) -> TokenInput:
             liquidity_usd=candidate.liquidity_usd,
             volume_1h=candidate.volume_1h_usd,
             price=candidate.price_usd or None,
+            price_change_5m_pct=candidate.price_change_5m_pct,
+            price_change_1h_pct=candidate.price_change_1h_pct,
+            price_change_6h_pct=candidate.price_change_6h_pct,
             age_seconds=float(candidate.age_seconds),
         ),
         activity=ActivityData(

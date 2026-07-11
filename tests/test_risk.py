@@ -101,3 +101,21 @@ def test_require_sources_empty_disables_check():
     cand = TokenCandidate(address="MintA", symbol="AAA", sources=["pumpfun_migration"])
     d = Decision(action="alert", confidence=0.9)
     assert rm.evaluate(cand, d, open_count=0) is not None
+
+
+def test_blocked_buy_source_never_buys():
+    rm = RiskManager(RiskConfig(blocked_buy_sources=("dexscreener_boost",)))
+    cand = TokenCandidate(address="MintA", symbol="AAA", sources=["dexscreener_boost", "rugcheck"])
+    d = Decision(action="alert", confidence=0.9)
+    assert rm.evaluate(cand, d, open_count=0) is None
+
+
+def test_source_conf_floor_applies_to_that_source_only():
+    rm = RiskManager(RiskConfig(source_conf_floors={"geckoterminal_trending": 0.68}))
+    d = Decision(action="alert", confidence=0.65)
+    gecko = TokenCandidate(address="MintA", symbol="AAA", sources=["geckoterminal_trending"])
+    fresh = TokenCandidate(address="MintB", symbol="BBB", sources=["dexscreener"])
+    assert rm.evaluate(gecko, d, open_count=0) is None  # 0.65 < 0.68 floor
+    assert rm.evaluate(fresh, d, open_count=0) is not None  # other sources use global floor
+    d_high = Decision(action="alert", confidence=0.70)
+    assert rm.evaluate(gecko, d_high, open_count=0) is not None

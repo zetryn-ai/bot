@@ -22,6 +22,14 @@ class TokenCandidate(BaseModel):
     market_cap_usd: float = 0.0
     price_usd: float = 0.0
 
+    # Price momentum (percent change; set by dexscreener/geckoterminal). The
+    # AI analyst uses these to tell "rising" from "already peaked" — a single
+    # price snapshot cannot express direction. 0.0 = unknown/not provided
+    # (e.g. pump.fun launches seconds old have no history yet).
+    price_change_5m_pct: float = 0.0
+    price_change_1h_pct: float = 0.0
+    price_change_6h_pct: float = 0.0
+
     # Volume & activity
     volume_1m_usd: float = 0.0
     volume_5m_usd: float = 0.0
