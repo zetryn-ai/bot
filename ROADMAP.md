@@ -22,7 +22,7 @@ appropriately on landing.
 | **M6** | Persistence (PostgreSQL — DecisionLog, position state) | ✅ shipped | v0.6.0 | [2026-07-05-m6-persistence.md](docs/plans/2026-07-05-m6-persistence.md) |
 | **M7** | Observability (Telegram notifier, heartbeat, crash dump) | ✅ shipped | v0.7.0 | [2026-07-05-m7-observability.md](docs/plans/2026-07-05-m7-observability.md) |
 | **M8** | Deployment (Dockerfile, compose, VPS deploy) | ✅ shipped | v0.8.0 | [2026-07-10-m8-deployment.md](docs/plans/2026-07-10-m8-deployment.md) |
-| **M9** | API + Dashboard (FastAPI + Next.js) | 📅 planned | v0.10.0 (or v1.0.0 cut) | TBD |
+| **M9** | API + Dashboard (FastAPI + static SPA, read-only, live AI activity) | 🚧 in-progress (`feat/m9-dashboard`) | v0.10.0 (or v1.0.0 cut) | [2026-07-12-m9-dashboard.md](docs/plans/2026-07-12-m9-dashboard.md) |
 | **M10a** | Exit intelligence — framework lifecycle agent per position tick (`PositionContext`, trailing stop) | ✅ shipped | v0.9.0 | [2026-07-11-m10a-exit-intelligence.md](docs/plans/2026-07-11-m10a-exit-intelligence.md) |
 | **M10b** | Specialized entry routing (sniper / graduation / scanner fallback; KOL & confluence → M10c) | 🚧 in-progress (`feat/m10b-routing`) | v0.11.0 | [2026-07-12-m10b-entry-routing.md](docs/plans/2026-07-12-m10b-entry-routing.md) |
 | **M10c** | Event-driven agents (KOL copy-trade / smart-money confluence / dip-buy / growth-detector triage) — needs the bot-side infra M10b deliberately deferred: real-time wallet event feeds (Helius webhooks / GMGN wallet streams, `KOLRegistry`, per-mint accumulation windows) and a per-token time-series store (recovery metrics, organic-growth classification) | 📅 planned | v0.12.0 | TBD |
