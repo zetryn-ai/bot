@@ -21,3 +21,4 @@ For roadmap progress and milestone status, see
 | 2026-07-05 | [M7 — Observability (Telegram, heartbeat, crash dump)](2026-07-05-m7-observability.md) | Shipped (v0.7.0) |
 | 2026-07-10 | [M8 — Deployment (Docker, VPS)](2026-07-10-m8-deployment.md) | Shipped (v0.8.0) |
 | 2026-07-11 | [M10a — Exit intelligence (lifecycle agent)](2026-07-11-m10a-exit-intelligence.md) | Shipped (v0.9.0) |
+| 2026-07-12 | [M10b — Specialized entry routing](2026-07-12-m10b-entry-routing.md) | Approved (`feat/m10b-routing`) |

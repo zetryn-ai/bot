@@ -24,7 +24,7 @@ appropriately on landing.
 | **M8** | Deployment (Dockerfile, compose, VPS deploy) | ✅ shipped | v0.8.0 | [2026-07-10-m8-deployment.md](docs/plans/2026-07-10-m8-deployment.md) |
 | **M9** | API + Dashboard (FastAPI + Next.js) | 📅 planned | v0.10.0 (or v1.0.0 cut) | TBD |
 | **M10a** | Exit intelligence — framework lifecycle agent per position tick (`PositionContext`, trailing stop) | ✅ shipped | v0.9.0 | [2026-07-11-m10a-exit-intelligence.md](docs/plans/2026-07-11-m10a-exit-intelligence.md) |
-| **M10b** | Specialized entry routing (per-signal agents: sniper / graduation / KOL copy-trade / confluence) | 📅 planned | v0.11.0 | TBD |
+| **M10b** | Specialized entry routing (sniper / graduation / scanner fallback; KOL & confluence → M10c) | 🚧 in-progress (`feat/m10b-routing`) | v0.11.0 | [2026-07-12-m10b-entry-routing.md](docs/plans/2026-07-12-m10b-entry-routing.md) |
 
 **On M10:** split 2026-07-11 into M10a (exit intelligence — shipped) and
 M10b (entry routing). M3 wires a single general agent (`build_scanner`). Routing each
