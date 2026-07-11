@@ -62,6 +62,9 @@ def build_trade_meta(candidate: TokenCandidate, decision: Decision) -> str:
             f"({candidate.twitter_top_influencer_followers:,} followers)",
         ]
     lines += ["", "🧠 Decision"]
+    route = decision.meta.get("route") if decision.meta else None
+    if route:
+        lines.append(f"  Route: {route}")
     lines.append(f"  Action: {decision.action} · Confidence: {decision.confidence:.2f}")
     scores = " · ".join(f"{k}={v:.2f}" for k, v in decision.scores.items())
     if scores:

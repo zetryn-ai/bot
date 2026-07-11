@@ -4,6 +4,7 @@ from __future__ import annotations
 
 from datetime import date
 
+import pytest
 from trading.schemas import Decision
 
 from zetryn_bot.execution.risk import RiskConfig, RiskManager
@@ -119,3 +120,32 @@ def test_source_conf_floor_applies_to_that_source_only():
     assert rm.evaluate(fresh, d, open_count=0) is not None  # other sources use global floor
     d_high = Decision(action="alert", confidence=0.70)
     assert rm.evaluate(gecko, d_high, open_count=0) is not None
+
+
+def _routed_decision(route: str, conf: float = 0.9) -> Decision:
+    d = Decision(action="alert", confidence=conf)
+    d.meta["route"] = route
+    return d
+
+
+def test_route_size_multiplier_scales_position():
+    rm = RiskManager(RiskConfig(base_size_sol=0.1, route_size_multipliers={"sniper": 0.5}))
+    cand = TokenCandidate(address="MintA", symbol="AAA", sources=["pumpfun_ws"])
+    req = rm.evaluate(cand, _routed_decision("sniper", conf=0.8), open_count=0)
+    assert req is not None
+    assert req.size_sol == pytest.approx(0.1 * 0.8 * 0.5)
+
+
+def test_unknown_route_multiplier_defaults_to_one():
+    rm = RiskManager(RiskConfig(base_size_sol=0.1, route_size_multipliers={"sniper": 0.5}))
+    cand = TokenCandidate(address="MintA", symbol="AAA", sources=["dexscreener"])
+    req = rm.evaluate(cand, Decision(action="alert", confidence=0.8), open_count=0)
+    assert req is not None
+    assert req.size_sol == pytest.approx(0.1 * 0.8)
+
+
+def test_route_conf_floor_blocks_below_floor():
+    rm = RiskManager(RiskConfig(route_conf_floors={"graduation": 0.75}))
+    cand = TokenCandidate(address="MintA", symbol="AAA", sources=["pumpfun_migration"])
+    assert rm.evaluate(cand, _routed_decision("graduation", conf=0.7), open_count=0) is None
+    assert rm.evaluate(cand, _routed_decision("graduation", conf=0.8), open_count=0) is not None

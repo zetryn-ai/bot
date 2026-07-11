@@ -32,11 +32,16 @@ class BotPipeline:
         enrichers: list[TokenEnricher] | None = None,
         sink: DecisionSink | None = None,
         config: ScannerConfig | None = None,
+        route_label: str | None = None,
     ) -> None:
         self.agent = agent
         self.enrichers = enrichers or []
         self.sink: DecisionSink = sink or LogSink()
         self.config = config or ScannerConfig()
+        # M10b: stamped into decision.meta["route"] before the sink runs so
+        # per-route risk policy (size multiplier, confidence floor) can see it.
+        # None (default) = pre-routing behaviour, no stamp.
+        self.route_label = route_label
 
     async def process(self, candidate: TokenCandidate, session: aiohttp.ClientSession) -> Decision:
         """Enrich, adapt, and run one candidate through the agent; emit + return the Decision."""
@@ -67,6 +72,8 @@ class BotPipeline:
                 reasons=["adapter failed to build TokenInput"],
                 flags={"synthetic": True, "source": "bot_adapter"},
             )
+            if self.route_label:
+                decision.meta["route"] = self.route_label
             await self.sink.emit(enriched, decision)
             return decision
 
@@ -83,6 +90,8 @@ class BotPipeline:
         else:
             decision = state.output
 
+        if self.route_label:
+            decision.meta["route"] = self.route_label
         await self.sink.emit(enriched, decision)
         return decision
 

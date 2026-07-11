@@ -15,6 +15,20 @@ from pydantic import Field, field_validator
 from pydantic_settings import BaseSettings, NoDecode, SettingsConfigDict
 
 
+def _parse_kv_floats(raw: str) -> dict[str, float]:
+    """Parse a "key:1.0,key2:0.5" CSV into a dict (bad entries skipped)."""
+    out: dict[str, float] = {}
+    for part in _parse_csv(raw):
+        if ":" not in part:
+            continue
+        key, _, val = part.partition(":")
+        try:
+            out[key.strip()] = float(val)
+        except ValueError:
+            continue
+    return out
+
+
 def _parse_csv(raw: str | list[str] | None) -> list[str]:
     """Split a comma-separated env string into a clean list of values."""
     if raw is None or raw == "":
@@ -132,6 +146,17 @@ class Settings(BaseSettings):
     # lags (tokens trend AFTER pumping): its 0.65+ buys won 33% vs 23% below.
     # If it still loses money with the floor, move it to the block list above.
     risk_source_conf_floors: str = "geckoterminal_trending:0.68"
+
+    # ── Entry routing (M10b) ─────────────────────────────────────────────────
+    # Off by default: one generalist scanner pipeline, exactly as v0.9.x. On,
+    # candidates route first-match: fresh pumpfun_ws launches → sniper (rule
+    # mode, no LLM), pumpfun_migration → graduation agent, everything else →
+    # scanner. NOTE: sniper rule-mode buys carry action="buy" — include "buy"
+    # in RISK_BUY_ACTIONS for the sniper route to trade.
+    routing_enabled: bool = False
+    sniper_max_age_s: float = 120.0  # pumpfun_ws launches older than this fall to scanner
+    route_size_multipliers: str = "sniper:0.5,graduation:1.0,scanner:1.0"
+    route_conf_floors: str = "sniper:0.6,graduation:0.6,scanner:0.6"
     risk_daily_loss_limit_sol: float = 1.0  # circuit breaker: stop buying past this daily loss
     exit_tp_pct: float = 0.30  # take profit at +30%
     exit_sl_pct: float = 0.15  # stop loss at -15%
@@ -188,16 +213,13 @@ class Settings(BaseSettings):
     # CSV → list normalisation for env vars passed as comma-separated strings
     def parsed_source_conf_floors(self) -> dict[str, float]:
         """Parse ``risk_source_conf_floors`` ("src:0.68,src2:0.7") into a dict."""
-        floors: dict[str, float] = {}
-        for part in _parse_csv(self.risk_source_conf_floors):
-            if ":" not in part:
-                continue
-            src, _, val = part.partition(":")
-            try:
-                floors[src.strip()] = float(val)
-            except ValueError:
-                continue
-        return floors
+        return _parse_kv_floats(self.risk_source_conf_floors)
+
+    def parsed_route_size_multipliers(self) -> dict[str, float]:
+        return _parse_kv_floats(self.route_size_multipliers)
+
+    def parsed_route_conf_floors(self) -> dict[str, float]:
+        return _parse_kv_floats(self.route_conf_floors)
 
     @field_validator(
         "helius_api_keys",

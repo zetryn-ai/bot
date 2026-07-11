@@ -55,6 +55,13 @@ class RiskConfig:
     # source (tokens trend AFTER pumping) — its sub-0.65 buys were mostly
     # stop-losses while the 0.65+ band won 33% vs 23% below.
     source_conf_floors: dict[str, float] = field(default_factory=dict)
+    # M10b per-route policy, keyed by decision.meta["route"] (stamped by the
+    # routing pipelines). Unknown/missing route → multiplier 1.0, no floor.
+    # Sizing multiplier composes with base_size x confidence (e.g. sniper 0.5
+    # halves exposure on the highest-variance route); the floor is an extra
+    # confidence gate on top of the global min_confidence.
+    route_size_multipliers: dict[str, float] = field(default_factory=dict)
+    route_conf_floors: dict[str, float] = field(default_factory=dict)
 
 
 class RiskManager:
@@ -129,6 +136,20 @@ class RiskManager:
             )
             return None
 
+        # Gate 1d — per-route confidence floor (M10b; route stamped by the
+        # routing pipelines into decision.meta).
+        route = str(decision.meta.get("route", "")) if decision.meta else ""
+        route_floor = self._cfg.route_conf_floors.get(route)
+        if route_floor is not None and decision.confidence < route_floor:
+            log.info(
+                "skipping {} — route {} needs confidence >= {} (got {:.2f})",
+                candidate.symbol or candidate.address[:8],
+                route,
+                route_floor,
+                decision.confidence,
+            )
+            return None
+
         # Gate 2 — daily-loss circuit breaker.
         if self._realized_pnl_today <= -self._cfg.daily_loss_limit_sol:
             log.warning(
@@ -149,6 +170,7 @@ class RiskManager:
             return None
 
         size = self._cfg.base_size_sol * decision.confidence
+        size *= self._cfg.route_size_multipliers.get(route, 1.0)
         if self._cfg.max_trade_sol is not None:
             size = min(size, self._cfg.max_trade_sol)
         size = round(size, 4)
