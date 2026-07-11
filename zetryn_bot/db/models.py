@@ -23,7 +23,7 @@ from __future__ import annotations
 from datetime import date, datetime
 from decimal import Decimal
 
-from sqlalchemy import BigInteger, Date, DateTime, Numeric, String
+from sqlalchemy import BigInteger, Date, DateTime, Numeric, String, Text
 from sqlalchemy.dialects.postgresql import JSONB
 from sqlalchemy.orm import DeclarativeBase, Mapped, mapped_column
 
@@ -83,3 +83,31 @@ class DecisionLogEntry(Base):
     key: Mapped[str] = mapped_column(String(128), primary_key=True)
     value: Mapped[dict] = mapped_column(JSONB)
     exp: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+
+
+class AiDecisionModel(Base):
+    """One row per candidate that REACHED the AI analyst (M9 live activity).
+
+    Hard-gate rejects and rule-only (sniper) decisions never land here —
+    ``AiActivitySink`` only records decisions carrying a ``FullAnalysis``.
+    ``outcome`` tracks how far the token got after the verdict:
+    ai_skip | not_buy_action | already_held | cooldown | risk_rejected |
+    buy_failed | opened. Retention-pruned (see AI_ACTIVITY_RETENTION_DAYS).
+    """
+
+    __tablename__ = "ai_decisions"
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    ts: Mapped[datetime] = mapped_column(DateTime(timezone=True), index=True)
+    mint: Mapped[str] = mapped_column(String, index=True)
+    symbol: Mapped[str] = mapped_column(String, default="")
+    primary_source: Mapped[str] = mapped_column(String(48), default="")
+    route: Mapped[str] = mapped_column(String(24), default="")
+    action: Mapped[str] = mapped_column(String(16))
+    confidence: Mapped[Decimal] = mapped_column(Numeric(5, 4))
+    final_score: Mapped[Decimal] = mapped_column(Numeric(5, 4))
+    scores: Mapped[dict] = mapped_column(JSONB, default=dict)
+    reasoning: Mapped[str] = mapped_column(Text, default="")
+    reasons: Mapped[list] = mapped_column(JSONB, default=list)
+    outcome: Mapped[str] = mapped_column(String(24), default="")
+    outcome_detail: Mapped[str] = mapped_column(String(160), default="")

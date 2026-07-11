@@ -90,6 +90,20 @@ class RiskManager:
         self, candidate: TokenCandidate, decision: Decision, open_count: int
     ) -> SwapRequest | None:
         """Return a SwapRequest to execute, or ``None`` (reason logged)."""
+        req, _code, _detail = self.evaluate_ex(candidate, decision, open_count)
+        return req
+
+    def evaluate_ex(
+        self, candidate: TokenCandidate, decision: Decision, open_count: int
+    ) -> tuple[SwapRequest | None, str | None, str]:
+        """Like :meth:`evaluate`, but also reports WHY a buy was rejected.
+
+        Returns ``(request, reject_code, reject_detail)`` — request is None
+        exactly when reject_code is set. Codes: buy_criteria,
+        require_sources, blocked_source, source_conf_floor, circuit_breaker,
+        max_positions. Consumed by the M9 AI-activity outcome tracking (the
+        dashboard's "stopped where" column).
+        """
         self._roll_day()
 
         # Gate 1 — only configured buy actions at/above the confidence floor.
@@ -97,7 +111,11 @@ class RiskManager:
             decision.action not in self._cfg.buy_actions
             or decision.confidence < self._cfg.min_confidence
         ):
-            return None
+            return (
+                None,
+                "buy_criteria",
+                f"action={decision.action} conf={decision.confidence:.2f}",
+            )
 
         # Gate 1b — required enrichment actually happened (fail-closed buys).
         missing = [s for s in self._cfg.require_sources if s not in candidate.sources]
@@ -107,7 +125,7 @@ class RiskManager:
                 candidate.symbol or candidate.address[:8],
                 ", ".join(missing),
             )
-            return None
+            return None, "require_sources", ", ".join(missing)
 
         # Gate 1c — per-source buy policy (primary source = discovering scanner).
         primary = candidate.sources[0] if candidate.sources else ""
@@ -117,7 +135,7 @@ class RiskManager:
                 candidate.symbol or candidate.address[:8],
                 primary,
             )
-            return None
+            return None, "blocked_source", primary
         floor = self._cfg.source_conf_floors.get(primary)
         if floor is not None and decision.confidence < floor:
             log.info(
@@ -127,7 +145,7 @@ class RiskManager:
                 floor,
                 decision.confidence,
             )
-            return None
+            return None, "source_conf_floor", f"{primary} needs >= {floor}"
 
         # Gate 2 — daily-loss circuit breaker.
         if self._realized_pnl_today <= -self._cfg.daily_loss_limit_sol:
@@ -137,7 +155,7 @@ class RiskManager:
                 self._cfg.daily_loss_limit_sol,
                 candidate.symbol or candidate.address[:8],
             )
-            return None
+            return None, "circuit_breaker", f"daily pnl {self._realized_pnl_today:+.4f} SOL"
 
         # Gate 3 — max concurrent positions.
         if open_count >= self._cfg.max_positions:
@@ -146,7 +164,7 @@ class RiskManager:
                 self._cfg.max_positions,
                 candidate.symbol or candidate.address[:8],
             )
-            return None
+            return None, "max_positions", str(self._cfg.max_positions)
 
         size = self._cfg.base_size_sol * decision.confidence
         if self._cfg.max_trade_sol is not None:
@@ -154,16 +172,20 @@ class RiskManager:
         size = round(size, 4)
         from zetryn_bot.notify.format import build_trade_meta
 
-        return SwapRequest(
-            mint=candidate.address,
-            symbol=candidate.symbol,
-            size_sol=size,
-            take_profit_pct=self._cfg.take_profit_pct,
-            stop_loss_pct=self._cfg.stop_loss_pct,
-            max_hold_s=self._cfg.max_hold_s,
-            confidence=decision.confidence,
-            meta=build_trade_meta(candidate, decision),
-            token_name=candidate.name,
+        return (
+            SwapRequest(
+                mint=candidate.address,
+                symbol=candidate.symbol,
+                size_sol=size,
+                take_profit_pct=self._cfg.take_profit_pct,
+                stop_loss_pct=self._cfg.stop_loss_pct,
+                max_hold_s=self._cfg.max_hold_s,
+                confidence=decision.confidence,
+                meta=build_trade_meta(candidate, decision),
+                token_name=candidate.name,
+            ),
+            None,
+            "",
         )
 
     async def record_close(self, pnl_sol: float) -> None:

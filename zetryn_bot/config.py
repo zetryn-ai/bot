@@ -171,6 +171,13 @@ class Settings(BaseSettings):
     # historical read per decision.
     enable_decision_log: bool = False
 
+    # ── Dashboard API (M9) ───────────────────────────────────────────────────
+    # Bearer token required by every /api/* endpoint. The API refuses to start
+    # without it (a read-only dashboard is still trade data). Bot side only
+    # uses ai_activity_retention_days (prune window for the live AI table).
+    dashboard_token: str = ""
+    ai_activity_retention_days: float = 14.0
+
     # ── Logging ─────────────────────────────────────────────────────────────
     log_level: str = "INFO"
     log_file: str = ""
