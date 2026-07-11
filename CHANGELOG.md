@@ -5,6 +5,40 @@ All notable changes to `zetryn-bot` will be documented in this file.
 The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and
 the project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.9.0] — 2026-07-11
+
+**M10a — Exit intelligence shipped.** Exits can now be decided by the
+framework's PL1 lifecycle agent (rule mode) instead of the static
+TP/SL/max-hold triple. Off by default (`LIFECYCLE_ENABLED=false` keeps
+v0.8.0 behaviour bit-for-bit). Design doc:
+[docs/plans/2026-07-11-m10a-exit-intelligence.md](docs/plans/2026-07-11-m10a-exit-intelligence.md).
+
+### Added
+
+- **`zetryn_bot/execution/lifecycle.py`** — `LifecycleEngine`: builds a
+  `PositionContext` per monitor tick and runs `strategies.agents.lifecycle`
+  (deterministic rule mode, no LLM per tick). Gates in framework order:
+  emergency → hard stop-loss → time stop → **trailing stop** → TP.
+  The trailing stop is the new alpha: arms after the position peaks past
+  `EXIT_TRAILING_ARM_PNL_PCT` (+20% default) and exits when
+  `EXIT_TRAILING_DRAWDOWN_PCT` (50% default) of the peak value is given
+  back — "momentum died" exits bank profit instead of round-tripping to
+  the -15% SL or the 30-minute time stop.
+- **`PositionTracker(lifecycle=...)`** — optional engine; when present,
+  `check_once` asks it for the exit decision instead of the static rules.
+  New close reasons `trailing_stop` and `emergency` join the existing
+  taxonomy (`take_profit` / `stop_loss` / `max_hold` unchanged).
+- **Settings** — `lifecycle_enabled`, `exit_trailing_arm_pnl_pct`,
+  `exit_trailing_drawdown_pct`.
+
+### Notes
+
+- Peak PnL is tracked in-memory: a restart re-arms the trailing stop from
+  the first post-restart quote (persisting peaks is a follow-up).
+- TP ladder is a single full-exit rung — the Executor protocol sells whole
+  positions only; multi-rung partial exits are M10.1.
+- ROADMAP M10 split: M10a (this) / M10b (per-signal entry routing, planned).
+
 ## [0.8.0] — 2026-07-11
 
 **M8 — Deployment shipped.** The bot now runs 24/7 on a VPS as a Docker
