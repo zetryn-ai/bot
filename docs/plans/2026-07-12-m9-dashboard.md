@@ -152,6 +152,6 @@ read-only role).
 - **B2** — `dashboard/` SPA (4 pages, polling, login).
 - **B3** — Docker stage + compose service + nginx/certbot deploy + `.env`
   keys + README section + release (merge after M10b lands; v0.10.0).
-  **Execution scheduled AFTER the dry-run window completes (3×24h, per user
+  **Execution scheduled AFTER the dry-run window completes (4×24h, per user
   2026-07-12)** — same milestone-merge sequence: window-2 analysis → fixes
   to main → M10b merge → M9 rebase → B3 deploy.
