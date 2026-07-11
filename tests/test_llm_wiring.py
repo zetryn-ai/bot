@@ -1,11 +1,13 @@
-"""Unit tests for optional LLM client wiring."""
+"""Unit tests for the LLM failover-router wiring."""
 
 from __future__ import annotations
 
-from zetryn_bot.runtime.llm import _CANDIDATES, try_build_llm_client
+from zetryn.llm import LLMRouter
 
-# Every env var name any candidate provider might read.
-_ALL_LLM_ENVS = [name for c in _CANDIDATES for name in c.key_envs] + ["LLM_MODEL"]
+from zetryn_bot.runtime.llm import _CHAIN, try_build_llm_client
+
+# Every env var name any chain entry might read.
+_ALL_LLM_ENVS = sorted({name for entry in _CHAIN for name in entry[4]} | {"LLM_MODEL"})
 
 
 def _clear_llm_env(monkeypatch):
@@ -18,18 +20,41 @@ def test_returns_none_when_no_provider_key_set(monkeypatch):
     assert try_build_llm_client() is None
 
 
-def test_builds_client_when_a_provider_key_is_present(monkeypatch):
+def test_single_provider_returns_router_over_its_models(monkeypatch):
     _clear_llm_env(monkeypatch)
-    monkeypatch.setenv("GROQ_API_KEY", "test-key")
+    monkeypatch.setenv("GROQ_API_KEY", "k1,k2,k3")
     client = try_build_llm_client()
-    assert client is not None
+    # Groq appears twice in the chain (two model buckets) -> router.
+    assert isinstance(client, LLMRouter)
+    assert [e.name for e in client.entries] == ["groq/llama-3.3-70b", "groq/llama-3.1-8b"]
 
 
-def test_llm_model_override_is_applied(monkeypatch):
+def test_all_providers_build_full_chain(monkeypatch):
     _clear_llm_env(monkeypatch)
-    monkeypatch.setenv("GROQ_API_KEY", "test-key")
+    monkeypatch.setenv("GROQ_API_KEY", "g1")
+    monkeypatch.setenv("OPENROUTER_API_KEY", "o1")
+    monkeypatch.setenv("GEMINI_API_KEY", "m1")
+    client = try_build_llm_client()
+    assert isinstance(client, LLMRouter)
+    assert len(client.entries) == 4  # groq x2 models + openrouter + gemini
+
+
+def test_pool_limit_scales_with_key_count(monkeypatch):
+    _clear_llm_env(monkeypatch)
+    monkeypatch.setenv("GROQ_API_KEY", ",".join(f"k{i}" for i in range(10)))
+    client = try_build_llm_client()
+    assert isinstance(client, LLMRouter)
+    primary = client.entries[0]
+    # llama-3.3-70b free tier is rpm=30/key -> 300 for 10 keys.
+    assert primary.limit is not None and primary.limit.rpm == 300
+
+
+def test_llm_model_override_applies_to_primary_only(monkeypatch):
+    _clear_llm_env(monkeypatch)
+    monkeypatch.setenv("GROQ_API_KEY", "k1")
     monkeypatch.setenv("LLM_MODEL", "custom-model-x")
-    # First candidate is groq; its config.model should reflect the override.
-    try_build_llm_client()
-    groq = next(c for c in _CANDIDATES if c.name == "groq")
-    assert groq.model == "custom-model-x"
+    client = try_build_llm_client()
+    assert isinstance(client, LLMRouter)
+    # Primary rides the override; the fallback keeps its own model.
+    assert client.entries[0].name == "groq/llama-3.3-70b"
+    assert "custom-model-x" not in client.entries[1].name
