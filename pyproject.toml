@@ -65,8 +65,10 @@ dependencies = [
     "twitter_login @ git+https://github.com/d60/twitter_login.git",  # Twitter scraper (no pypi)
     "nltk>=3.8",                                                # VADER sentiment for twitter scanner
 
-    # Decision framework — live on PyPI since v1.0.0 (2026-06-28), no git pin needed
-    "zetryn-trading>=1.1.0",
+    # Decision framework — live on PyPI since v1.0.0 (2026-06-28), no git pin needed.
+    # >=1.2.0: market_gate accepts 0 thresholds, resolver splits CSV keys,
+    # alert/watch thresholds enforced, CalibrationMap + replay bridge available.
+    "zetryn-trading>=1.2.0",
 
     # Wallet + live execution (M5)
     "solders>=0.21",            # Keypair, VersionedTransaction (Rust bindings, sign locally)

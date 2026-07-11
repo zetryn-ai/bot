@@ -56,11 +56,10 @@ _CANDIDATES: list[ProviderConfig] = [
 def _env_keys(names: list[str]) -> list[str]:
     """Return the comma-split keys from the first set env var in ``names``.
 
-    The bot's convention (mirroring scanner keys) is a comma-separated list in a
-    single env var. The framework's own resolver reads the whole value as ONE
-    key, so a multi-key ``GROQ_API_KEY`` would be sent as a single invalid
-    Bearer token. Splitting here and passing literal keys lets the framework's
-    KeyPool rotate over them correctly.
+    Used only to DETECT whether a provider is configured (and log the key
+    count). Since zetryn-trading 1.2.0 the framework's own resolver splits a
+    CSV env value into individual KeyPool entries, so the bot no longer
+    passes literal keys — the framework owns key resolution end to end.
     """
     for name in names:
         raw = os.environ.get(name, "").strip()
@@ -81,9 +80,6 @@ def try_build_llm_client() -> LLMClient | None:
         keys = _env_keys(config.key_envs)
         if not keys:
             continue
-        # Literal keys win over key_envs in the framework's resolver AND are
-        # already comma-split, so the KeyPool rotates over all of them.
-        config.keys = keys
         if model_override:
             config.model = model_override
         log.info(

@@ -84,8 +84,8 @@ def check_offline() -> int:
     failures: list[str] = []
 
     print(f"zetryn_bot.__version__ = {__version__!r}")
-    if __version__ != "0.8.0":
-        failures.append(f"version mismatch: expected '0.8.0', got {__version__!r}")
+    if __version__ != "0.9.0":
+        failures.append(f"version mismatch: expected '0.9.0', got {__version__!r}")
 
     # Every Scanner class must have a name attribute and a stream method.
     print()

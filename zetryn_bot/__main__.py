@@ -159,10 +159,10 @@ async def build_orchestrator(settings: Settings) -> Orchestrator:
 
     # Gate thresholds from Settings feed the hard gates that run before the LLM.
     config = ScannerConfig(
-        # Floor at 1: the framework's market_gate divides by these * 5, so a
-        # literal 0 would crash it. 1 is effectively "no minimum" and safe.
-        min_liquidity_usd=max(1.0, settings.gate_min_liquidity_usd),
-        min_volume_1h=max(1.0, settings.gate_min_volume_1h),
+        # Since zetryn-trading 1.2.0, 0 means "no floor" (the old
+        # division-by-zero in market_gate is fixed) — pass values through.
+        min_liquidity_usd=settings.gate_min_liquidity_usd,
+        min_volume_1h=settings.gate_min_volume_1h,
         max_top10_pct=settings.gate_max_top10_pct,
         min_holders=settings.gate_min_holders,
         max_bundler_wallets=settings.gate_max_bundler_wallets,
