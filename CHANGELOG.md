@@ -5,6 +5,38 @@ All notable changes to `zetryn-bot` will be documented in this file.
 The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and
 the project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.9.1] — 2026-07-12
+
+**Dry-run hardening.** Every change here is backed by the first 10h/48-trade
+paper window on the VPS (23% win rate, -0.09 SOL): churn on re-bought mints
+was 84% of the loss, paid-boost tokens went 0/3, trending sources were bought
+after their pump, and the telegram scanner's own watchdog caused 1,269
+reconnects.
+
+### Added
+
+- **Re-entry cooldown** (`RISK_REENTRY_COOLDOWN_S`, default 4h) — a closed
+  mint cannot be re-bought until the cooldown lapses; restored from
+  `closed_trades` on restart so a container bounce can't resume churn.
+- **Source buy-policy** — `RISK_BLOCKED_BUY_SOURCES` (default
+  `dexscreener_boost`: paid promotion = exit-liquidity signal) and
+  `RISK_SOURCE_CONF_FLOORS` (default `geckoterminal_trending:0.68`).
+- **Price momentum inputs** — `price_change_{5m,1h,6h}_pct` on
+  `TokenCandidate`, parsed from DexScreener `priceChange` and GeckoTerminal
+  `price_change_percentage` (both verified live), mapped into the framework's
+  `MarketData` (requires `zetryn-trading>=1.3.0`, whose analyst rubric now
+  distinguishes late entries from early momentum).
+- **Birdeye CU-safe cadence** — `BIRDEYE_{TRENDING,NEW_LISTING}_POLL_S`
+  (default 1800s): free keys carry 30k CU/month; the old 60s/45s cadence
+  needed ~115 free keys to survive a week.
+
+### Fixed
+
+- **Telegram watchdog self-flapping** — `wait_for(run_until_disconnected,
+  30s)` cancelled Telethon's internal wait every 30s, tearing down a healthy
+  connection each cycle; replaced with a passive `is_connected()` poll.
+- OPENED notification icon is now 🔵 (was 🟢, colliding with take-profit).
+
 ## [0.9.0] — 2026-07-11
 
 **M10a — Exit intelligence shipped.** Exits can now be decided by the
