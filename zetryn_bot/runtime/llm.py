@@ -1,15 +1,24 @@
-"""Optional LLM client wiring for the runtime.
+"""LLM wiring for the runtime — a failover router over every configured provider.
 
-Boundary note: the framework (`zetryn-trading`) owns LLM keys. This module
-only *names* candidate providers and hands a ``ProviderConfig`` to the
-framework, which resolves the key from the environment (loaded from ``.env``)
-and owns rotation via its ``KeyPool``. The bot never reads or stores the key
-value — it just detects, by letting the framework's resolver succeed or
-raise, whether a provider is configured.
+Boundary note: the framework (`zetryn-trading`) owns keys, rotation, throttle
+tracking, and failover (``KeyPool`` + ``LLMRouter``). This module only detects
+which providers have keys in the environment and declares the failover order;
+the framework does the rest.
 
-If no candidate provider has its key set, :func:`try_build_llm_client` returns
-``None`` and the runtime runs the rule-only path (`build_scanner(llm_client=None)`),
-which is exactly the offline path exercised by the M2 tests.
+Failover chain (first configured entry wins per call; on rate-limit /
+exhaustion the router moves down):
+
+    1. groq / llama-3.3-70b-versatile   (primary — best quality on Groq free)
+    2. groq / llama-3.1-8b-instant      (same keys, different model bucket:
+                                         separate RPM/TPM/RPD quota per key)
+    3. openrouter / llama-3.3-70b:free  (different provider, same model family)
+    4. gemini / gemini-2.5-flash        (last resort — free RPD is tiny)
+
+Rationale (2026-07-11 dry run): a single groq client with 3 retry attempts
+produced bursts of "LLM unavailable (LLMError)" conservative skips whenever a
+candidate burst exceeded the per-key RPM/TPM — 14 of 17 keys were idle-cooling
+while the call gave up. Key rotation alone is not enough; model- and
+provider-level failover is, and the framework ships it (``LLMRouter``).
 """
 
 from __future__ import annotations
@@ -17,38 +26,50 @@ from __future__ import annotations
 import os
 
 from loguru import logger
+from zetryn.auth.subscription import RateLimit
 from zetryn.llm import (
     GEMINI_BASE_URL,
     GROQ_BASE_URL,
     OPENROUTER_BASE_URL,
+    PROVIDER_FREE_TIER_LIMITS,
     LLMClient,
+    LLMRouter,
     OpenAICompatibleClient,
     ProviderConfig,
+    RouterEntry,
 )
 
 log = logger.bind(component="runtime.llm")
 
-# Candidate providers tried in priority order. Each entry names the env var(s)
-# holding the key (framework resolves the value) and a sensible default model.
-# The model can be overridden per deployment via the ``LLM_MODEL`` env var.
-_CANDIDATES: list[ProviderConfig] = [
-    ProviderConfig(
-        name="groq",
-        base_url=GROQ_BASE_URL,
-        model="llama-3.3-70b-versatile",
-        key_envs=["GROQ_API_KEY", "GROQ_API_KEYS"],
+# (entry name, provider, base_url, model, env vars with the CSV keys)
+_CHAIN: list[tuple[str, str, str, str, list[str]]] = [
+    (
+        "groq/llama-3.3-70b",
+        "groq",
+        GROQ_BASE_URL,
+        "llama-3.3-70b-versatile",
+        ["GROQ_API_KEY", "GROQ_API_KEYS"],
     ),
-    ProviderConfig(
-        name="openrouter",
-        base_url=OPENROUTER_BASE_URL,
-        model="meta-llama/llama-3.3-70b-instruct",
-        key_envs=["OPENROUTER_API_KEY", "OPENROUTER_API_KEYS"],
+    (
+        "groq/llama-3.1-8b",
+        "groq",
+        GROQ_BASE_URL,
+        "llama-3.1-8b-instant",
+        ["GROQ_API_KEY", "GROQ_API_KEYS"],
     ),
-    ProviderConfig(
-        name="gemini",
-        base_url=GEMINI_BASE_URL,
-        model="gemini-2.0-flash",
-        key_envs=["GEMINI_API_KEY", "GOOGLE_API_KEY"],
+    (
+        "openrouter/llama-3.3-70b:free",
+        "openrouter",
+        OPENROUTER_BASE_URL,
+        "meta-llama/llama-3.3-70b-instruct:free",  # :free id verified 2026-07-12
+        ["OPENROUTER_API_KEY", "OPENROUTER_API_KEYS"],
+    ),
+    (
+        "gemini/2.5-flash",
+        "gemini",
+        GEMINI_BASE_URL,
+        "gemini-2.5-flash",
+        ["GEMINI_API_KEY", "GOOGLE_API_KEY"],
     ),
 ]
 
@@ -56,10 +77,8 @@ _CANDIDATES: list[ProviderConfig] = [
 def _env_keys(names: list[str]) -> list[str]:
     """Return the comma-split keys from the first set env var in ``names``.
 
-    Used only to DETECT whether a provider is configured (and log the key
-    count). Since zetryn-trading 1.2.0 the framework's own resolver splits a
-    CSV env value into individual KeyPool entries, so the bot no longer
-    passes literal keys — the framework owns key resolution end to end.
+    Detection + key count only — since zetryn-trading 1.2.0 the framework's
+    resolver splits CSV values itself; this module never passes key values.
     """
     for name in names:
         raw = os.environ.get(name, "").strip()
@@ -68,27 +87,66 @@ def _env_keys(names: list[str]) -> list[str]:
     return []
 
 
-def try_build_llm_client() -> LLMClient | None:
-    """Build an LLM client from the first configured provider, or ``None``.
+def _pool_limit(provider: str, model: str, n_keys: int) -> RateLimit | None:
+    """Scale the framework's per-KEY free-tier limit to the whole key pool.
 
-    Returns ``None`` (rule-only path) when no candidate provider's key is set.
-    An ``LLM_MODEL`` env var, when present, overrides the chosen provider's
-    default model.
+    The router's throttle is per entry; with N rotated keys the effective
+    budget is N x the per-key numbers. Best-effort — the provider's own 429
+    stays the source of truth (the entry then cools down and the router
+    fails over).
+    """
+    per_key = PROVIDER_FREE_TIER_LIMITS.get(provider, {}).get(model)
+    if per_key is None:
+        return None
+    scale = lambda v: v * n_keys if v else None  # noqa: E731
+    return RateLimit(
+        rpm=scale(per_key.rpm),
+        rpd=scale(per_key.rpd),
+        tpm=scale(per_key.tpm),
+        tpd=scale(per_key.tpd),
+    )
+
+
+def try_build_llm_client() -> LLMClient | None:
+    """Build the failover router from every provider with keys in the env.
+
+    Returns ``None`` (rule-only path) when no provider is configured, the
+    single client when exactly one chain entry is available, or an
+    ``LLMRouter`` over all available entries otherwise. ``LLM_MODEL``
+    overrides the PRIMARY entry's model only.
     """
     model_override = os.environ.get("LLM_MODEL", "").strip()
-    for config in _CANDIDATES:
-        keys = _env_keys(config.key_envs)
+
+    entries: list[RouterEntry] = []
+    for name, provider, base_url, model, key_envs in _CHAIN:
+        keys = _env_keys(key_envs)
         if not keys:
             continue
-        if model_override:
-            config.model = model_override
-        log.info(
-            "LLM client built — provider={} model={} keys={}",
-            config.name,
-            config.model,
-            len(keys),
+        if model_override and not entries:  # primary entry only
+            model = model_override
+        config = ProviderConfig(
+            name=provider,
+            base_url=base_url,
+            model=model,
+            key_envs=key_envs,
+            # More key-rotation attempts per call when the pool is deep —
+            # 3 attempts against 17 keys was the observed failure mode.
+            max_retries=min(max(3, len(keys) // 2), 8),
         )
-        return OpenAICompatibleClient(config)
+        entries.append(
+            RouterEntry(
+                client=OpenAICompatibleClient(config),
+                name=name,
+                limit=_pool_limit(provider, model, len(keys)),
+            )
+        )
+        log.info("LLM chain entry — {} keys={} model={}", name, len(keys), model)
 
-    log.info("no LLM provider key found — running rule-only (llm_client=None)")
-    return None
+    if not entries:
+        log.info("no LLM provider key found — running rule-only (llm_client=None)")
+        return None
+    if len(entries) == 1:
+        log.info("LLM client built — single entry {}", entries[0].name)
+        return entries[0].client
+    log.info("LLM router built — {} failover entries", len(entries))
+    return LLMRouter(entries)
