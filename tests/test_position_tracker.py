@@ -103,3 +103,98 @@ async def test_win_rate_stat():
     await _open(tracker)
     await tracker.check_once()
     assert tracker.stats()["win_rate"] == 1.0
+
+
+class _FailingJupiter:
+    """quote_or_status returns a configurable failure; quote() mirrors it."""
+
+    def __init__(self, status: int | None) -> None:
+        self.status = status
+
+    async def quote_or_status(self, input_mint, output_mint, amount_atomic, slippage_bps=100):
+        return None, self.status
+
+    async def quote(self, input_mint, output_mint, amount_atomic, slippage_bps=100):
+        return None
+
+
+def _tracker_with(jup, clock, dead_route_after=3):
+    risk = RiskManager(RiskConfig())
+    ex = PaperExecutor(jup)
+    return PositionTracker(ex, jup, risk, now_fn=clock, dead_route_after=dead_route_after)
+
+
+@pytest.mark.asyncio
+async def test_dead_route_closes_expired_position_at_zero():
+    clock = _Clock()
+    tracker = _tracker_with(_FailingJupiter(status=400), clock, dead_route_after=3)
+    await _open(tracker, size_sol=0.2, max_hold=1800)
+    clock.t += 1801  # past max hold
+
+    await tracker.check_once()  # fail 1
+    await tracker.check_once()  # fail 2
+    assert tracker.open_count() == 1  # below threshold — still open
+    await tracker.check_once()  # fail 3 → dead_route close
+
+    assert tracker.open_count() == 0
+    stats = tracker.stats()
+    assert stats["closed"] == 1
+    assert stats["total_pnl_sol"] == pytest.approx(-0.2)  # total loss, exit at 0
+
+
+@pytest.mark.asyncio
+async def test_rate_limit_never_force_closes():
+    clock = _Clock()
+    tracker = _tracker_with(_FailingJupiter(status=429), clock, dead_route_after=3)
+    await _open(tracker, max_hold=1800)
+    clock.t += 1801  # past max hold
+
+    for _ in range(10):  # way past the dead-route threshold
+        await tracker.check_once()
+
+    assert tracker.open_count() == 1  # 429 is transient — never close blind
+
+
+@pytest.mark.asyncio
+async def test_dead_route_not_closed_before_max_hold():
+    clock = _Clock()
+    tracker = _tracker_with(_FailingJupiter(status=400), clock, dead_route_after=3)
+    await _open(tracker, max_hold=1800)  # still young
+
+    for _ in range(10):
+        await tracker.check_once()
+
+    assert tracker.open_count() == 1  # no-route alone isn't enough — needs age too
+
+
+@pytest.mark.asyncio
+async def test_route_fail_counter_resets_on_success():
+    clock = _Clock()
+    jup = _FailingJupiter(status=400)
+    tracker = _tracker_with(jup, clock, dead_route_after=3)
+    await _open(tracker, size_sol=0.2, max_hold=1800)
+    clock.t += 1801
+
+    await tracker.check_once()  # fail 1
+    await tracker.check_once()  # fail 2
+
+    # Route comes back at a flat price — max_hold closes it via the normal path.
+    async def _good_quote(input_mint, output_mint, amount_atomic, slippage_bps=100):
+        return Quote(
+            in_amount=amount_atomic,
+            out_amount=sol_to_lamports(0.2),
+            price_impact_pct=0.0,
+        ), 200
+
+    jup.quote_or_status = _good_quote
+
+    async def _good_plain(input_mint, output_mint, amount_atomic, slippage_bps=100):
+        q, _ = await _good_quote(input_mint, output_mint, amount_atomic, slippage_bps)
+        return q
+
+    jup.quote = _good_plain
+
+    await tracker.check_once()
+    assert tracker.open_count() == 0
+    trade = tracker.stats()
+    assert trade["closed"] == 1

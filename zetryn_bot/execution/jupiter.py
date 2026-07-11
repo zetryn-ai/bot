@@ -19,6 +19,7 @@ quotes mint→SOL (out = lamports back).
 from __future__ import annotations
 
 import os
+import time
 from dataclasses import dataclass
 
 import aiohttp
@@ -56,10 +57,13 @@ class JupiterQuote:
     def __init__(self, quote_url: str = _QUOTE_URL, swap_url: str = _SWAP_URL) -> None:
         self._url = quote_url
         self._swap_url = swap_url
+        self._last_429_warn = 0.0
 
     async def _quote_json(
         self, input_mint: str, output_mint: str, amount_atomic: int, slippage_bps: int
-    ) -> dict | None:
+    ) -> tuple[dict | None, int | None]:
+        """Return ``(json, http_status)``; json is None on failure, status is
+        None on a network-level error."""
         params = {
             "inputMint": input_mint,
             "outputMint": output_mint,
@@ -73,13 +77,55 @@ class JupiterQuote:
                     self._url, params=params, timeout=aiohttp.ClientTimeout(total=10)
                 ) as resp,
             ):
+                if resp.status == 429:
+                    # WARNING (not debug) so it reaches the M7 log bridge →
+                    # Telegram. Free tier = 60 req / 60s sliding window
+                    # (verified 2026-07-11 at developers.jup.ag). Throttled to
+                    # one line/min so a storm doesn't flood the log file; the
+                    # first VPS deploy had positions stuck 11h behind
+                    # debug-level 429s nobody could see.
+                    now = time.monotonic()
+                    if now - self._last_429_warn >= 60.0:
+                        self._last_429_warn = now
+                        log.warning(
+                            "Jupiter quote rate limited (HTTP 429) — free tier is 60 req/min"
+                        )
+                    return None, 429
                 if resp.status != 200:
                     log.debug("quote HTTP {}: {}", resp.status, (await resp.text())[:120])
-                    return None
-                return await resp.json()
+                    return None, resp.status
+                return await resp.json(), 200
         except Exception as exc:
             log.debug("quote error {} -> {}: {}", input_mint[:6], output_mint[:6], exc)
-            return None
+            return None, None
+
+    async def quote_or_status(
+        self,
+        input_mint: str,
+        output_mint: str,
+        amount_atomic: int,
+        slippage_bps: int = 100,
+    ) -> tuple[Quote | None, int | None]:
+        """Like :meth:`quote`, but also reports the HTTP status on failure.
+
+        Lets callers separate a transient failure (429 / 5xx / network →
+        retry later) from a permanent one (400 no-route → the token is very
+        likely dead and will never quote again).
+        """
+        if amount_atomic <= 0:
+            return None, None
+        body, status = await self._quote_json(input_mint, output_mint, amount_atomic, slippage_bps)
+        if body is None:
+            return None, status
+        try:
+            return Quote(
+                in_amount=int(body["inAmount"]),
+                out_amount=int(body["outAmount"]),
+                price_impact_pct=float(body.get("priceImpactPct") or 0.0),
+            ), status
+        except (KeyError, ValueError, TypeError) as exc:
+            log.debug("quote parse error: {}", exc)
+            return None, status
 
     async def quote(
         self,
@@ -89,20 +135,10 @@ class JupiterQuote:
         slippage_bps: int = 100,
     ) -> Quote | None:
         """Return a :class:`Quote`, or ``None`` on any error (log + continue)."""
-        if amount_atomic <= 0:
-            return None
-        body = await self._quote_json(input_mint, output_mint, amount_atomic, slippage_bps)
-        if body is None:
-            return None
-        try:
-            return Quote(
-                in_amount=int(body["inAmount"]),
-                out_amount=int(body["outAmount"]),
-                price_impact_pct=float(body.get("priceImpactPct") or 0.0),
-            )
-        except (KeyError, ValueError, TypeError) as exc:
-            log.debug("quote parse error: {}", exc)
-            return None
+        q, _status = await self.quote_or_status(
+            input_mint, output_mint, amount_atomic, slippage_bps
+        )
+        return q
 
     async def build_swap_tx(
         self,

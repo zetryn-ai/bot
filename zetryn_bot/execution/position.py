@@ -38,6 +38,7 @@ class PositionTracker:
         repo=None,  # PositionRepo | None — None keeps M4/M5 in-memory behaviour
         execution_mode: str = "paper",
         notifier=None,
+        dead_route_after: int = 10,  # consecutive no-route sweeps before a dead-route close
     ) -> None:
         from zetryn_bot.notify.telegram import NullNotifier
 
@@ -50,6 +51,8 @@ class PositionTracker:
         self._repo = repo
         self._execution_mode = execution_mode
         self._notifier = notifier or NullNotifier()
+        self._dead_route_after = dead_route_after
+        self._route_fails: dict[str, int] = {}
         self._open: dict[str, Position] = {}
         self._closed: list[ClosedTrade] = []
 
@@ -109,12 +112,71 @@ class PositionTracker:
             return "max_hold"
         return None
 
+    async def _quote_with_status(self, mint: str, atomic: int):
+        """Quote with HTTP status when the client supports it (duck-typed so
+        test doubles that only implement ``quote()`` keep working; their
+        failures read as transient, matching the old behaviour)."""
+        fn = getattr(self._jup, "quote_or_status", None)
+        if fn is not None:
+            return await fn(mint, SOL_MINT, atomic)
+        return await self._jup.quote(mint, SOL_MINT, atomic), None
+
+    async def _finalize_close(self, mint: str, position: Position, trade: ClosedTrade) -> None:
+        del self._open[mint]
+        self._route_fails.pop(mint, None)
+        self._closed.append(trade)
+        if self._repo is not None:
+            await self._repo.delete_open(mint)
+            await self._repo.save_closed_trade(trade, self._execution_mode)
+        await self._risk.record_close(trade.pnl_sol)
+        from zetryn_bot.notify.format import format_close
+
+        held_s = self._now() - position.opened_at
+        await self._notifier.notify(format_close(position, trade, held_s))
+
     async def check_once(self) -> None:
-        """One sweep over open positions: quote, evaluate exits, close if triggered."""
+        """One sweep over open positions: quote, evaluate exits, close if triggered.
+
+        Quote failures are split by cause (learned from 5 positions stuck open
+        for 11h on the first VPS deploy):
+
+        - transient (429 / 5xx / network): never force-close — the price will
+          be back; the max-hold exit fires on the first successful quote.
+        - permanent (no route, HTTP 4xx): after ``dead_route_after``
+          consecutive failures on a position past its max hold, close it at
+          0 SOL (``dead_route``). Honest accounting: if Jupiter cannot route
+          the sell, a live position could not exit either — that token is a
+          total loss, not an immortal open position.
+        """
         for mint, position in list(self._open.items()):
-            q = await self._jup.quote(mint, SOL_MINT, position.tokens_atomic)
+            age_expired = (self._now() - position.opened_at) >= position.max_hold_s
+            q, status = await self._quote_with_status(mint, position.tokens_atomic)
+
             if q is None:
+                transient = status is None or status == 429 or status >= 500
+                if transient:
+                    continue  # price will come back; retry next sweep
+                fails = self._route_fails.get(mint, 0) + 1
+                self._route_fails[mint] = fails
+                if fails == 1 or fails == self._dead_route_after:
+                    log.warning(
+                        "no sell route for {} (HTTP {}, {} consecutive) — {}",
+                        position.symbol or mint[:8],
+                        status,
+                        fails,
+                        "closing as dead_route" if fails >= self._dead_route_after else "watching",
+                    )
+                if age_expired and fails >= self._dead_route_after:
+                    trade = ClosedTrade(
+                        position=position,
+                        exit_sol=0.0,
+                        pnl_sol=-position.size_sol,
+                        reason="dead_route",
+                    )
+                    await self._finalize_close(mint, position, trade)
                 continue
+
+            self._route_fails.pop(mint, None)
             current_sol = lamports_to_sol(q.out_amount)
             reason = self._exit_reason(position, current_sol)
             if reason is None:
@@ -122,16 +184,7 @@ class PositionTracker:
             trade = await self._executor.sell(position, reason)
             if trade is None:
                 continue  # sell failed — keep the position open, retry next sweep
-            del self._open[mint]
-            self._closed.append(trade)
-            if self._repo is not None:
-                await self._repo.delete_open(mint)
-                await self._repo.save_closed_trade(trade, self._execution_mode)
-            await self._risk.record_close(trade.pnl_sol)
-            from zetryn_bot.notify.format import format_close
-
-            held_s = self._now() - position.opened_at
-            await self._notifier.notify(format_close(position, trade, held_s))
+            await self._finalize_close(mint, position, trade)
 
     async def monitor_loop(self) -> None:
         """Supervised task: sweep exits every ``poll_interval_s``; log stats periodically."""
