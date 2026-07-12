@@ -166,7 +166,7 @@ class RiskManager:
                 route_floor,
                 decision.confidence,
             )
-            return None
+            return None, "route_conf_floor", f"{route} needs >= {route_floor}"
 
         # Gate 2 — daily-loss circuit breaker.
         if self._realized_pnl_today <= -self._cfg.daily_loss_limit_sol:

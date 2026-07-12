@@ -28,6 +28,19 @@ services:
         max-size: "20m"
         max-file: "5"
 
+  dashboard:
+    image: zetryn-bot:latest
+    container_name: zetryn-dashboard
+    restart: unless-stopped
+    command: uvicorn zetryn_bot.api.app:app --host 0.0.0.0 --port 8140 --log-level warning
+    env_file: .env
+    ports:
+      - "127.0.0.1:8140:8140" # nginx host reverse-proxies the public vhost here
+    networks:
+      - odoo-net
+    depends_on:
+      - bot
+
 networks:
   odoo-net:
     external: true

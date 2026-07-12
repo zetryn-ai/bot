@@ -7,6 +7,15 @@
 # never ships in the final image. All heavy deps (solders, curl-cffi,
 # asyncpg) install from manylinux wheels — no compiler needed.
 
+FROM node:20-slim AS spa
+# Dashboard SPA (M9) — built here so the VPS never needs a Node runtime.
+WORKDIR /spa
+COPY dashboard/package.json dashboard/package-lock.json* ./
+RUN npm install --no-audit --no-fund
+COPY dashboard/ ./
+RUN npm run build
+
+
 FROM python:3.12-slim AS builder
 
 RUN apt-get update \
@@ -16,7 +25,7 @@ RUN apt-get update \
 WORKDIR /src
 COPY pyproject.toml README.md ./
 COPY zetryn_bot ./zetryn_bot
-RUN pip install --no-cache-dir --prefix=/install .
+RUN pip install --no-cache-dir --prefix=/install ".[api]"
 
 
 FROM python:3.12-slim
@@ -42,6 +51,8 @@ WORKDIR /app
 COPY alembic.ini ./
 COPY alembic ./alembic
 COPY scripts ./scripts
+# Dashboard SPA build → served by zetryn_bot.api.app when this dir exists.
+COPY --from=spa /spa/dist /usr/local/lib/python3.12/site-packages/zetryn_bot/api/static
 # logs/ = loguru file sink, data/ = telegram session + (later) wallet.enc —
 # both bind-mounted in docker-compose.vps.yml so they outlive the container.
 RUN mkdir -p /app/logs /app/data && chown -R bot:bot /app
