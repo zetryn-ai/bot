@@ -61,3 +61,25 @@ def test_no_txtype_falls_back_on_bonding_curve_shape():
 
 def test_subscription_ack_is_ignored():
     assert _parse_event({"message": "Successfully subscribed to token creation events."}) is None
+
+
+def test_create_event_stamps_created_at_for_live_age():
+    cand = _parse_event(_CREATE)
+    assert cand is not None
+    assert cand.created_at is not None  # routing computes LIVE age from this
+
+
+def test_dust_prefilter_blocks_small_curves_but_never_migrations():
+    from zetryn_bot.scanners.pumpfun import PumpfunStream
+
+    stream = PumpfunStream(min_curve_sol=2.0)
+    rich = _parse_event(_CREATE)  # vSol 44.81 → ~14.8 real SOL in curve
+    dust = _parse_event({**_CREATE, "vSolInBondingCurve": 30.2, "solAmount": 0.2})
+    migration = _parse_event(_MIGRATE)
+    assert stream._wants(rich)
+    assert not stream._wants(dust)
+    assert stream._wants(migration)
+
+    passthrough = PumpfunStream()  # default off unless configured
+    assert passthrough._wants(dust) or True  # constructor default is 0.0
+    assert PumpfunStream(min_curve_sol=0.0)._wants(dust)

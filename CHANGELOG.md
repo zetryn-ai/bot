@@ -5,6 +5,30 @@ All notable changes to `zetryn-bot` will be documented in this file.
 The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and
 the project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.10.3] — 2026-07-12
+
+Follow-ups from the full-system log audit (user decisions A–D).
+
+### Added
+
+- `PUMPFUN_MIN_CURVE_SOL` (default 2.0): pump.fun creates whose bonding
+  curve holds less real SOL never enter the pipeline — 80% of the firehose
+  was dust that burned Helius/GMGN/RugCheck budget just to be rejected by
+  the sniper for "liquidity too low".
+- `RISK_REQUIRE_SOURCES_EXEMPT_ROUTES` (default `sniper`): sniper
+  candidates are seconds old, RugCheck has not indexed them (29% coverage
+  observed), so the fail-closed `RISK_REQUIRE_SOURCES` gate would block
+  every sniper buy; on that route the sniper agent's fast_safety gate is
+  the safety authority.
+- `docs/API-KEYS.md` — living reference: measured demand + verified rate
+  limits + how many keys per provider survive 7×24 (user request).
+
+### Fixed
+
+- Sniper max-age now checks the **live** age (`created_at`-based) instead
+  of the frozen parse-time `age_seconds` — queue latency could smuggle a
+  stale launch into the sniper route.
+
 ## [0.10.2] — 2026-07-12
 
 ### Fixed

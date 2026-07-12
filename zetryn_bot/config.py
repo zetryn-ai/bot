@@ -68,6 +68,11 @@ class Settings(BaseSettings):
     birdeye_api_keys: Annotated[list[str], NoDecode] = Field(default_factory=list)
     gmgn_api_key: str = ""
     pumpportal_api_key: str = ""
+    # Pre-filter for pump.fun create events: creates whose bonding curve holds
+    # less real SOL than this never enter the pipeline (dust launches are 80%
+    # of the firehose and burn enricher budget just to be rejected for
+    # "liquidity too low" anyway). 0 disables.
+    pumpfun_min_curve_sol: float = 2.0
 
     # ── Telegram scanner (telethon) ─────────────────────────────────────────
     telegram_api_id: int = 0
@@ -131,6 +136,13 @@ class Settings(BaseSettings):
     # bought with default "safe" flags.
     risk_require_sources: Annotated[list[str], NoDecode] = Field(
         default_factory=lambda: ["rugcheck"]
+    )
+    # Routes exempt from RISK_REQUIRE_SOURCES (CSV). Sniper candidates are
+    # seconds old — RugCheck has not indexed them yet (29% coverage observed
+    # on pumpfun_ws), so fail-closed would block every sniper buy; the sniper
+    # agent's fast_safety gate is the safety authority on that route.
+    risk_require_sources_exempt_routes: Annotated[list[str], NoDecode] = Field(
+        default_factory=lambda: ["sniper"]
     )
     # Churn guard: block re-buying a mint for this long after ANY close.
     # 10h dry-run data: 6 mints = 32/48 trades at net -0.076 SOL, re-buy
@@ -234,6 +246,7 @@ class Settings(BaseSettings):
         "scanners_enabled",
         "risk_buy_actions",
         "risk_require_sources",
+        "risk_require_sources_exempt_routes",
         "risk_blocked_buy_sources",
         mode="before",
     )

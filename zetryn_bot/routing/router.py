@@ -15,6 +15,7 @@ from __future__ import annotations
 
 from collections.abc import Callable
 from dataclasses import dataclass
+from datetime import UTC, datetime
 from typing import Protocol, runtime_checkable
 
 import aiohttp
@@ -48,6 +49,22 @@ class Route:
 def primary_source(candidate: TokenCandidate) -> str:
     """The discovering scanner — first entry in ``sources`` (enrichers append after)."""
     return candidate.sources[0] if candidate.sources else ""
+
+
+def live_age_seconds(candidate: TokenCandidate) -> float:
+    """Candidate age computed NOW, not the snapshot stamped at parse time.
+
+    ``age_seconds`` is frozen when the scanner parses the event; any queue
+    latency between parse and routing would let a stale launch through a
+    max-age predicate. Falls back to the snapshot when ``created_at`` is
+    unavailable.
+    """
+    if candidate.created_at is not None:
+        created = candidate.created_at
+        if created.tzinfo is None:
+            created = created.replace(tzinfo=UTC)
+        return max(0.0, (datetime.now(UTC) - created).total_seconds())
+    return float(candidate.age_seconds)
 
 
 class RoutedPipeline:

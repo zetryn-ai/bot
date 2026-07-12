@@ -38,13 +38,27 @@ _SOL_PRICE_USD = 150.0
 
 
 class PumpfunStream:
-    """WebSocket scanner for Pump.fun new-token + migration events."""
+    """WebSocket scanner for Pump.fun new-token + migration events.
+
+    ``min_curve_sol`` pre-filters dust launches at the source: a create whose
+    bonding curve holds less real SOL never enters the pipeline. Observed
+    2026-07-12: 80% of creates were later rejected by the sniper agent for
+    "liquidity too low" AFTER burning helius/gmgn/rugcheck calls — the curve
+    SOL is already in the WS payload, so filtering here saves that entire
+    enrichment budget. 0 disables (every create flows through).
+    """
 
     name = "pumpfun.ws"
 
-    def __init__(self, api_key: str = "", reconnect_delay_s: float = 5.0) -> None:
+    def __init__(
+        self,
+        api_key: str = "",
+        reconnect_delay_s: float = 5.0,
+        min_curve_sol: float = 0.0,
+    ) -> None:
         self._api_key = api_key
         self._reconnect_delay_s = reconnect_delay_s
+        self._min_curve_sol = min_curve_sol
         self._log = logger.bind(component=self.name)
 
     async def stream(self, session: aiohttp.ClientSession) -> AsyncIterator[TokenCandidate]:
@@ -68,8 +82,9 @@ class PumpfunStream:
                             self._log.debug(f"non-JSON message: {exc}")
                             continue
                         token = _parse_event(data)
-                        if token:
-                            yield token
+                        if token is None or not self._wants(token):
+                            continue
+                        yield token
             except asyncio.CancelledError:
                 raise
             except Exception as exc:
@@ -77,6 +92,15 @@ class PumpfunStream:
                     f"disconnected: {exc} — reconnecting in {self._reconnect_delay_s}s"
                 )
                 await asyncio.sleep(self._reconnect_delay_s)
+
+    def _wants(self, token: TokenCandidate) -> bool:
+        """Dust pre-filter: creates below ``min_curve_sol`` never enter the pipeline.
+
+        Migrations always pass — they raised ~85 SOL by definition.
+        """
+        return not (
+            token.sources == ["pumpfun_ws"] and token.bonding_curve_sol < self._min_curve_sol
+        )
 
 
 def _parse_event(data: dict) -> TokenCandidate | None:
@@ -108,7 +132,12 @@ def _parse_newtoken_event(data: dict) -> TokenCandidate | None:
         return None
 
     created_ts = data.get("created_timestamp")
-    created_at = datetime.fromtimestamp(created_ts / 1000, tz=UTC) if created_ts else None
+    # A create event IS the creation moment — stamp receive time when the
+    # payload has no timestamp, so downstream age checks (sniper max-age)
+    # can compute a LIVE age instead of trusting the frozen age_seconds=0.
+    created_at = (
+        datetime.fromtimestamp(created_ts / 1000, tz=UTC) if created_ts else datetime.now(UTC)
+    )
 
     # Bonding-curve signals: Pump.fun's virtual reserve is ~30 SOL; graduation
     # threshold is ~85 SOL total → 55 more "real" SOL needed.

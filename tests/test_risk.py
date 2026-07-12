@@ -97,6 +97,21 @@ def test_require_sources_allows_verified_contract():
     assert rm.evaluate(cand, d, open_count=0) is not None
 
 
+def test_require_sources_exempt_route_skips_gate():
+    # Sniper candidates are seconds old — rugcheck can't have indexed them;
+    # the exempt list lets the route's own fast_safety gate own safety.
+    rm = RiskManager(
+        RiskConfig(require_sources=("rugcheck",), require_sources_exempt_routes=("sniper",))
+    )
+    cand = TokenCandidate(address="MintA", symbol="AAA", sources=["pumpfun_ws", "helius"])
+    d = Decision(action="alert", confidence=0.9)
+    d.meta["route"] = "sniper"
+    assert rm.evaluate(cand, d, open_count=0) is not None  # gate 1b skipped
+    d_scanner = Decision(action="alert", confidence=0.9)
+    d_scanner.meta["route"] = "scanner"
+    assert rm.evaluate(cand, d_scanner, open_count=0) is None  # still fail-closed
+
+
 def test_require_sources_empty_disables_check():
     rm = RiskManager(RiskConfig())  # default: no requirement at the dataclass level
     cand = TokenCandidate(address="MintA", symbol="AAA", sources=["pumpfun_migration"])

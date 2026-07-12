@@ -199,6 +199,7 @@ async def build_orchestrator(settings: Settings) -> Orchestrator:
                 daily_loss_limit_sol=settings.risk_daily_loss_limit_sol,
                 buy_actions=tuple(settings.risk_buy_actions),
                 require_sources=tuple(settings.risk_require_sources),
+                require_sources_exempt_routes=tuple(settings.risk_require_sources_exempt_routes),
                 blocked_buy_sources=tuple(settings.risk_blocked_buy_sources),
                 source_conf_floors=settings.parsed_source_conf_floors(),
                 route_size_multipliers=settings.parsed_route_size_multipliers(),
@@ -295,7 +296,12 @@ async def build_orchestrator(settings: Settings) -> Orchestrator:
 
         from zetryn_bot.routing.graduation import GraduationPipeline
         from zetryn_bot.routing.launch_memory import LaunchMemory
-        from zetryn_bot.routing.router import Route, RoutedPipeline, primary_source
+        from zetryn_bot.routing.router import (
+            Route,
+            RoutedPipeline,
+            live_age_seconds,
+            primary_source,
+        )
 
         launch_memory = LaunchMemory()
         max_age = settings.sniper_max_age_s
@@ -328,7 +334,9 @@ async def build_orchestrator(settings: Settings) -> Orchestrator:
             routes=[
                 Route(
                     "sniper",
-                    lambda c: primary_source(c) == "pumpfun_ws" and c.age_seconds <= max_age,
+                    # live age, not the parse-time snapshot — queue latency
+                    # must not smuggle a stale launch into the sniper.
+                    lambda c: primary_source(c) == "pumpfun_ws" and live_age_seconds(c) <= max_age,
                     sniper_pipe,
                 ),
                 Route(

@@ -45,6 +45,12 @@ class RiskConfig:
     # put money on a contract whose safety data never actually arrived.
     # Empty = no requirement (M4/M5 behaviour).
     require_sources: tuple[str, ...] = ()
+    # Routes exempt from require_sources (gate 1b). Sniper candidates are
+    # seconds old — RugCheck has not indexed them yet (29% coverage observed
+    # on pumpfun_ws vs graduated tokens), so fail-closed would block every
+    # sniper buy; on that route the sniper agent's fast_safety gate is the
+    # safety authority instead (user decision 2026-07-12).
+    require_sources_exempt_routes: tuple[str, ...] = ()
     # Primary sources (candidate.sources[0], the discovering scanner) whose
     # candidates are never bought. 10h VPS data: dexscreener_boost went 0/3,
     # -0.077 SOL — a boost is PAID promotion by the dev, i.e. an
@@ -112,6 +118,7 @@ class RiskManager:
         dashboard's "stopped where" column).
         """
         self._roll_day()
+        route = str(decision.meta.get("route", "")) if decision.meta else ""
 
         # Gate 1 — only configured buy actions at/above the confidence floor.
         if (
@@ -125,7 +132,13 @@ class RiskManager:
             )
 
         # Gate 1b — required enrichment actually happened (fail-closed buys).
-        missing = [s for s in self._cfg.require_sources if s not in candidate.sources]
+        # Exempt routes (sniper) skip this: their candidates are too fresh for
+        # the required enrichers to have data, and the route's own agent gates
+        # safety.
+        if route in self._cfg.require_sources_exempt_routes:
+            missing = []
+        else:
+            missing = [s for s in self._cfg.require_sources if s not in candidate.sources]
         if missing:
             log.info(
                 "skipping {} — required enrichment missing: {} (fail-closed buy policy)",
@@ -156,7 +169,6 @@ class RiskManager:
 
         # Gate 1d — per-route confidence floor (M10b; route stamped by the
         # routing pipelines into decision.meta).
-        route = str(decision.meta.get("route", "")) if decision.meta else ""
         route_floor = self._cfg.route_conf_floors.get(route)
         if route_floor is not None and decision.confidence < route_floor:
             log.info(

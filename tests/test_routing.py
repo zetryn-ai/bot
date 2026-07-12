@@ -155,3 +155,27 @@ def test_graduation_event_unknown_launch_is_zero():
         TokenCandidate(address="MintX", sources=["pumpfun_migration"]), LaunchMemory()
     )
     assert event.bonding_curve_fill_seconds == 0.0
+
+
+def test_live_age_seconds_prefers_created_at_over_snapshot():
+    from datetime import UTC, datetime, timedelta
+
+    from zetryn_bot.routing.router import live_age_seconds
+
+    # age_seconds frozen at 0 by the parser, but the token was created 10
+    # minutes ago — queue latency must not smuggle it into the sniper.
+    stale = TokenCandidate(
+        address="MintOld",
+        sources=["pumpfun_ws"],
+        age_seconds=0,
+        created_at=datetime.now(UTC) - timedelta(minutes=10),
+    )
+    assert live_age_seconds(stale) > 590
+
+    fresh = TokenCandidate(
+        address="MintNew", sources=["pumpfun_ws"], age_seconds=0, created_at=datetime.now(UTC)
+    )
+    assert live_age_seconds(fresh) < 5
+
+    no_ts = TokenCandidate(address="MintX", sources=["pumpfun_ws"], age_seconds=42)
+    assert live_age_seconds(no_ts) == 42.0

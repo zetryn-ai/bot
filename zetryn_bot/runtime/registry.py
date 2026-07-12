@@ -68,7 +68,12 @@ def build_enabled_scanners(settings: Settings) -> list[Scanner]:
         log.warning("birdeye scanners skipped — BIRDEYE_API_KEYS empty")
 
     if settings.pumpportal_api_key:
-        scanners.append(PumpfunStream(settings.pumpportal_api_key))
+        scanners.append(
+            PumpfunStream(
+                settings.pumpportal_api_key,
+                min_curve_sol=settings.pumpfun_min_curve_sol,
+            )
+        )
     else:
         log.warning("pumpfun scanner skipped — PUMPPORTAL_API_KEY empty")
 
