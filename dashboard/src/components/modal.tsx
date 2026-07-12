@@ -323,6 +323,11 @@ export function PositionModal({ pos, onClose }: { pos: OpenPosition; onClose: ()
         />
       </div>
 
+      <div className="modal-section">
+        <h3>Token data at entry</h3>
+        <SnapshotGrid snapshot={pos.entry_snapshot ?? {}} />
+      </div>
+
       {pos.partials.length > 0 && (
         <div className="modal-section">
           <h3>Partial exits (TP ladder)</h3>

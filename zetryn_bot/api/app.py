@@ -47,6 +47,13 @@ async def auth_check() -> dict:
     return {"ok": True}
 
 
+def _parsed_ladder() -> list[tuple[float, float]]:
+    try:
+        return settings.parsed_tp_ladder()
+    except Exception:
+        return []
+
+
 @app.get("/api/overview", dependencies=[Depends(require_token)])
 async def overview() -> dict:
     async with session_factory() as session:
@@ -55,6 +62,19 @@ async def overview() -> dict:
             .scalars()
             .all()
         )
+        # Token-data snapshot from the decision that OPENED each position —
+        # "what did the token look like at entry" (detail modal).
+        entry_snapshots: dict[str, dict] = {}
+        for p in open_rows:
+            row = (
+                await session.execute(
+                    select(AiDecisionModel.snapshot)
+                    .where(AiDecisionModel.mint == p.mint, AiDecisionModel.outcome == "opened")
+                    .order_by(AiDecisionModel.ts.desc())
+                    .limit(1)
+                )
+            ).scalar_one_or_none()
+            entry_snapshots[p.mint] = row or {}
         today_pnl = (
             await session.execute(
                 select(RiskStateModel.realized_pnl_sol).where(
@@ -93,9 +113,11 @@ async def overview() -> dict:
                 ),
                 "marked_at": p.marked_at.isoformat() if p.marked_at is not None else None,
                 "partials": p.partials or [],
+                "entry_snapshot": entry_snapshots.get(p.mint, {}),
             }
             for p in open_rows
         ],
+        "tp_ladder": _parsed_ladder(),
         "today_pnl_sol": today,
         "circuit_breaker": {
             "limit_sol": daily_limit,

@@ -48,10 +48,12 @@ export interface OpenPosition {
   unrealized_pnl_pct: number | null;
   marked_at: string | null;
   partials: { sold_at_pnl_pct: number; sold_size: number; sold_at_ts: number }[];
+  entry_snapshot: Record<string, number>;
 }
 
 export interface Overview {
   open_positions: OpenPosition[];
+  tp_ladder: [number, number][];
   today_pnl_sol: number;
   circuit_breaker: { limit_sol: number; tripped: boolean };
   closed_count: number;

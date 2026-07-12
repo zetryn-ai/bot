@@ -70,17 +70,23 @@ function AiActivityTable({ rows }: { rows: AiActivityRow[] }) {
   );
 }
 
-function PnlBar({ pos }: { pos: OpenPosition }) {
-  // Center = entry. Fill grows RIGHT toward TP (green) or LEFT toward SL
-  // (red); neutral gray notch when flat or unmarked. Half-width is scaled to
-  // the position's own TP/SL targets, so a full bar = target reached.
+function PnlBar({ pos, ladder }: { pos: OpenPosition; ladder: [number, number][] }) {
+  // ONE linear scale from −SL (left edge) to the FINAL ladder rung (right
+  // edge) — the sides are proportional (−15% left vs +100% right = narrow
+  // red zone), the entry sits at its true position, and every TP rung gets
+  // a checkpoint tick the fill has to cross. Hit rungs show ✓.
   const pnl = pos.unrealized_pnl_pct;
-  const tp = Math.max(pos.take_profit_pct, 0.0001);
   const sl = Math.max(Math.abs(pos.stop_loss_pct), 0.0001);
+  const rungs = ladder.length ? ladder.map(([t]) => t) : [Math.max(pos.take_profit_pct, 0.0001)];
+  const finalTp = rungs[rungs.length - 1];
+  const range = sl + finalTp;
+  const frac = (v: number) => Math.min(100, Math.max(0, ((sl + v) / range) * 100));
+  const entryX = frac(0);
   const stale = !pos.marked_at || Date.now() - new Date(pos.marked_at).getTime() > 120_000;
   const flat = pnl === null || stale || Math.abs(pnl) < 0.001;
   const pct = pnl ?? 0;
-  const width = flat ? 0 : Math.min(1, Math.abs(pct) / (pct >= 0 ? tp : sl)) * 50;
+  const valueX = frac(pct);
+  const hit = new Set(pos.partials.map((pe) => Math.round(pe.sold_at_pnl_pct * 1e6)));
   return (
     <div className="pnlbar-wrap">
       <div className="pnlbar-labels">
@@ -91,22 +97,56 @@ function PnlBar({ pos }: { pos: OpenPosition }) {
         >
           {pnl === null || stale ? "…" : `${pct >= 0 ? "+" : ""}${(pct * 100).toFixed(1)}%`}
         </span>
-        <span className="pos mono">+{(tp * 100).toFixed(0)}% TP</span>
+        <span className="pos mono">+{(finalTp * 100).toFixed(0)}% TP</span>
       </div>
       <div className="pnlbar">
         {!flat && pct < 0 && (
-          <div className="fill loss" style={{ width: `${width}%`, right: "50%" }} />
+          <div
+            className="fill loss"
+            style={{ left: `${valueX}%`, width: `${entryX - valueX}%` }}
+          />
         )}
         {!flat && pct > 0 && (
-          <div className="fill gain" style={{ width: `${width}%`, left: "50%" }} />
+          <div
+            className="fill gain"
+            style={{ left: `${entryX}%`, width: `${valueX - entryX}%` }}
+          />
         )}
-        <div className={`center-notch ${flat ? "idle" : ""}`} />
+        <div className={`center-notch ${flat ? "idle" : ""}`} style={{ left: `${entryX}%` }} />
+        {rungs.map((t, i) => {
+          const done = hit.has(Math.round(t * 1e6));
+          return (
+            <div
+              key={t}
+              className={`rung-tick ${done ? "done" : ""}`}
+              style={{ left: `${frac(t)}%` }}
+              title={`TP${i + 1} +${(t * 100).toFixed(0)}%${done ? " — sold ✓" : ""}`}
+            />
+          );
+        })}
+      </div>
+      <div className="rung-labels">
+        {rungs.slice(0, -1).map((t, i) => (
+          <span
+            key={t}
+            className={`mono ${hit.has(Math.round(t * 1e6)) ? "pos" : "muted"}`}
+            style={{ left: `${frac(t)}%` }}
+          >
+            {hit.has(Math.round(t * 1e6)) ? "✓" : ""}TP{i + 1} +{(t * 100).toFixed(0)}%
+          </span>
+        ))}
       </div>
     </div>
   );
 }
 
-function PositionsGrid({ positions }: { positions: OpenPosition[] }) {
+function PositionsGrid({
+  positions,
+  ladder,
+}: {
+  positions: OpenPosition[];
+  ladder: [number, number][];
+}) {
   const [selected, setSelected] = useState<OpenPosition | null>(null);
   if (!positions.length) return <p className="muted">No open positions.</p>;
   return (
@@ -124,7 +164,7 @@ function PositionsGrid({ positions }: { positions: OpenPosition[] }) {
               )}
               <span className="pos-age muted">{ago(p.opened_at)}</span>
             </div>
-            <PnlBar pos={p} />
+            <PnlBar pos={p} ladder={ladder} />
             <div className="pos-meta muted">
               <span className="mono">{p.size_sol.toFixed(4)} SOL</span>
               <span>conf <span className="mono">{p.confidence.toFixed(2)}</span></span>
@@ -177,7 +217,7 @@ export default function Overview() {
         <h2>
           Open positions <span className="hint">click a row for details</span>
         </h2>
-        <PositionsGrid positions={ov.open_positions} />
+        <PositionsGrid positions={ov.open_positions} ladder={ov.tp_ladder ?? []} />
       </div>
 
       <div className="card">
