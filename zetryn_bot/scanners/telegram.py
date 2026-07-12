@@ -150,12 +150,30 @@ class TelegramScanner:
         @client.on(events.NewMessage(chats=list(channel_map.keys())))
         async def _on_message(event: events.NewMessage.Event) -> None:
             msg: Message = event.message
-            text = msg.message or ""
-            if not text:
-                return
             ch_config = channel_map.get(event.chat_id)
             if not ch_config:
                 return
+            # CAs in these channels frequently hide inside embedded links
+            # (MessageEntityTextUrl) and inline buttons rather than the plain
+            # text — fold every URL into the searchable haystack.
+            parts = [msg.message or ""]
+            for ent in msg.entities or []:
+                url = getattr(ent, "url", None)
+                if url:
+                    parts.append(url)
+            if msg.reply_markup is not None:
+                for row in getattr(msg.reply_markup, "rows", []) or []:
+                    for button in getattr(row, "buttons", []) or []:
+                        url = getattr(button, "url", None)
+                        if url:
+                            parts.append(url)
+            text = "\n".join(p for p in parts if p)
+            if not text:
+                return
+            self._log.debug(
+                f"msg from {ch_config.display_name}: {len(text)} chars, "
+                f"{len(parts) - 1} url(s)"
+            )
             for address in _extract_solana_addresses(text):
                 candidate = TokenCandidate(
                     address=address,
