@@ -1,5 +1,5 @@
-// Small shared pieces: stat tile, outcome badge (icon + label — never color
-// alone), polling hook.
+// Small shared pieces: stat tile, outcome/route badges (icon + label — never
+// color alone), polling hook, relative-time helper.
 
 import { useEffect, useState } from "react";
 import { api } from "../api";
@@ -50,22 +50,110 @@ export function StatTile({
   );
 }
 
-const OUTCOME_BADGE: Record<string, { icon: string; label: string; cls: string }> = {
-  opened: { icon: "●", label: "OPENED", cls: "opened" },
-  ai_skip: { icon: "—", label: "AI skip", cls: "" },
-  ai_abort: { icon: "✕", label: "AI abort", cls: "bad" },
-  not_buy_action: { icon: "◌", label: "watch only", cls: "" },
-  cooldown: { icon: "⏸", label: "cooldown", cls: "warn" },
-  already_held: { icon: "≡", label: "held", cls: "" },
-  risk_rejected: { icon: "⛔", label: "risk gate", cls: "warn" },
-  buy_failed: { icon: "!", label: "buy failed", cls: "bad" },
+// ── outcome (how far a token got after its AI verdict) ──────────────────────
+
+export const OUTCOME_INFO: Record<
+  string,
+  { icon: string; label: string; cls: string; explain: string }
+> = {
+  opened: {
+    icon: "●",
+    label: "OPENED",
+    cls: "opened",
+    explain: "Passed every gate — a position was opened for this token.",
+  },
+  ai_skip: {
+    icon: "—",
+    label: "AI skip",
+    cls: "",
+    explain: "The AI analyst scored this token too low to act on. It stopped here.",
+  },
+  ai_abort: {
+    icon: "✕",
+    label: "AI abort",
+    cls: "bad",
+    explain: "The AI analysis errored or was aborted — treated as a conservative skip.",
+  },
+  not_buy_action: {
+    icon: "◌",
+    label: "watch only",
+    cls: "",
+    explain:
+      "The AI verdict (watch/alert) is not in the configured buy actions, so no trade was attempted.",
+  },
+  cooldown: {
+    icon: "⏸",
+    label: "cooldown",
+    cls: "warn",
+    explain:
+      "Re-entry cooldown: the bot closed a trade on this token recently (4h window), so it refuses to buy it again yet. This prevents churn — repeatedly re-buying the same falling token.",
+  },
+  already_held: {
+    icon: "≡",
+    label: "held",
+    cls: "",
+    explain: "A position in this token is already open — the bot never stacks positions.",
+  },
+  risk_rejected: {
+    icon: "⛔",
+    label: "risk gate",
+    cls: "warn",
+    explain: "A RiskManager gate rejected the trade — the detail names the exact gate.",
+  },
+  buy_failed: {
+    icon: "!",
+    label: "buy failed",
+    cls: "bad",
+    explain: "Risk approved the trade but the swap could not be executed (e.g. no route/quote).",
+  },
 };
 
-export function OutcomeBadge({ outcome, detail }: { outcome: string; detail: string }) {
-  const b = OUTCOME_BADGE[outcome] ?? { icon: "…", label: outcome || "pending", cls: "" };
+export function outcomeInfo(outcome: string) {
   return (
-    <span className={`badge ${b.cls}`} title={detail}>
+    OUTCOME_INFO[outcome] ?? {
+      icon: "…",
+      label: outcome || "pending",
+      cls: "",
+      explain: outcome
+        ? ""
+        : "Decision recorded — the execution outcome has not been reported yet.",
+    }
+  );
+}
+
+export function OutcomeBadge({ outcome, detail }: { outcome: string; detail: string }) {
+  const b = outcomeInfo(outcome);
+  const title = [b.explain, detail].filter(Boolean).join("\n\n");
+  return (
+    <span className={`badge ${b.cls}`} title={title}>
       {b.icon} {b.label}
+    </span>
+  );
+}
+
+// ── route (which entry strategy handled the token) ──────────────────────────
+
+export const ROUTE_INFO: Record<string, { icon: string; explain: string }> = {
+  sniper: {
+    icon: "⚡",
+    explain: "Sniper strategy — fresh pump.fun launches, pure-rule decision (no LLM).",
+  },
+  graduation: {
+    icon: "🎓",
+    explain: "Graduation strategy — pump.fun → Raydium migrations.",
+  },
+  scanner: {
+    icon: "🔍",
+    explain: "Scanner strategy — generalist AI analyst for trending/boost/new-pool signals.",
+  },
+};
+
+export function RouteBadge({ route }: { route: string }) {
+  if (!route) return <span className="muted">—</span>;
+  const r = ROUTE_INFO[route];
+  return (
+    <span className="badge route" title={r?.explain ?? `Entry strategy: ${route}`}>
+      {r?.icon ?? "◆"} {route}
     </span>
   );
 }
@@ -82,8 +170,19 @@ export function PnlText({ v, digits = 4 }: { v: number; digits?: number }) {
 export function ago(iso: string | null): string {
   if (!iso) return "—";
   const s = (Date.now() - new Date(iso).getTime()) / 1000;
-  if (s < 60) return `${Math.floor(s)}s lalu`;
-  if (s < 3600) return `${Math.floor(s / 60)}m lalu`;
-  if (s < 86400) return `${(s / 3600).toFixed(1)}h lalu`;
-  return `${(s / 86400).toFixed(1)}d lalu`;
+  if (s < 60) return `${Math.floor(s)}s ago`;
+  if (s < 3600) return `${Math.floor(s / 60)}m ago`;
+  if (s < 86400) return `${(s / 3600).toFixed(1)}h ago`;
+  return `${(s / 86400).toFixed(1)}d ago`;
+}
+
+export function fmtWhen(iso: string | null): string {
+  if (!iso) return "—";
+  return `${new Date(iso).toLocaleString()} (${ago(iso)})`;
+}
+
+export function fmtDuration(seconds: number): string {
+  if (seconds < 90) return `${Math.round(seconds)}s`;
+  if (seconds < 5400) return `${Math.round(seconds / 60)}m`;
+  return `${(seconds / 3600).toFixed(1)}h`;
 }

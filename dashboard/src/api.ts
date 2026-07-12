@@ -36,10 +36,15 @@ export interface OpenPosition {
   mint: string;
   symbol: string;
   size_sol: number;
+  tokens_atomic: number;
   confidence: number;
+  take_profit_pct: number;
+  stop_loss_pct: number;
+  max_hold_s: number;
   opened_at: string;
   status: string;
   execution_mode: string;
+  route: string;
 }
 
 export interface Overview {
@@ -71,6 +76,7 @@ export interface Trade {
   mint: string;
   symbol: string;
   size_sol: number;
+  tokens_atomic: number;
   exit_sol: number;
   pnl_sol: number;
   reason: string;
@@ -78,6 +84,8 @@ export interface Trade {
   opened_at: string;
   closed_at: string;
   held_minutes: number;
+  execution_mode: string;
+  route: string;
 }
 
 export interface TradesPage {
@@ -95,6 +103,7 @@ export interface StatGroup {
 
 export interface Stats {
   by_reason: StatGroup[];
+  by_route: StatGroup[];
   by_confidence: StatGroup[];
   by_day: StatGroup[];
 }

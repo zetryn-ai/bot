@@ -176,6 +176,7 @@ class LiveExecutor:
                 confidence=req.confidence,
                 meta=req.meta,
                 token_name=req.token_name,
+                route=req.route,
             )
 
     async def sell(self, position: Position, reason: str) -> ClosedTrade | None:

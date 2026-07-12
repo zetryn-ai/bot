@@ -43,6 +43,7 @@ class SwapRequest:
     # (M7) — never persisted to the DB, in-memory only.
     meta: str = ""
     token_name: str = ""
+    route: str = ""  # entry strategy (sniper|graduation|scanner), persisted with the position
 
 
 @dataclass
@@ -60,6 +61,7 @@ class Position:
     opened_at: float = 0.0
     meta: str = ""
     token_name: str = ""
+    route: str = ""
 
 
 @dataclass
@@ -119,6 +121,7 @@ class PaperExecutor:
             confidence=req.confidence,
             meta=req.meta,
             token_name=req.token_name,
+            route=req.route,
         )
 
     async def sell(self, position: Position, reason: str) -> ClosedTrade | None:

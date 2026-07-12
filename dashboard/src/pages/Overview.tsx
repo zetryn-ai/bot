@@ -1,15 +1,19 @@
-import type { AiActivityRow, Overview as OverviewData } from "../api";
-import { OutcomeBadge, PnlText, StatTile, ago, usePoll } from "../components/bits";
+import { useState } from "react";
+import type { AiActivityRow, OpenPosition, Overview as OverviewData } from "../api";
+import { OutcomeBadge, RouteBadge, StatTile, ago, usePoll } from "../components/bits";
+import { AiDecisionModal, PositionModal } from "../components/modal";
 
 function AiActivityTable({ rows }: { rows: AiActivityRow[] }) {
-  if (!rows.length) return <p className="muted">Belum ada keputusan AI terekam.</p>;
+  const [selected, setSelected] = useState<AiActivityRow | null>(null);
+  if (!rows.length) return <p className="muted">No AI decisions recorded yet.</p>;
   return (
     <div className="tablewrap">
       <table>
         <thead>
           <tr>
-            <th>Waktu</th>
+            <th>Time</th>
             <th>Token</th>
+            <th>Strategy</th>
             <th>Source</th>
             <th>Action</th>
             <th className="num">Conf</th>
@@ -20,11 +24,15 @@ function AiActivityTable({ rows }: { rows: AiActivityRow[] }) {
         </thead>
         <tbody>
           {rows.map((r, i) => (
-            <tr key={`${r.mint}-${r.ts}-${i}`}>
+            <tr
+              key={`${r.mint}-${r.ts}-${i}`}
+              className="clickable"
+              onClick={() => setSelected(r)}
+            >
               <td className="muted mono">{ago(r.ts)}</td>
+              <td className="mono token-cell">{r.symbol || r.mint.slice(0, 6)}</td>
               <td>
-                <span className="mono">{r.symbol || r.mint.slice(0, 6)}</span>
-                {r.route && <span className="muted"> · {r.route}</span>}
+                <RouteBadge route={r.route} />
               </td>
               <td className="secondary">{r.source}</td>
               <td className="mono">{r.action}</td>
@@ -33,9 +41,9 @@ function AiActivityTable({ rows }: { rows: AiActivityRow[] }) {
                 <span className="scorebar">
                   {(["safety", "market", "wallets", "social"] as const).map((k) =>
                     r.scores[k] !== undefined ? (
-                      <span key={k} title={k}>
+                      <span key={k} className="dim" title={`${k}: ${r.scores[k].toFixed(2)}`}>
                         {k[0].toUpperCase()}
-                        {Math.round(r.scores[k] * 10)}
+                        <i style={{ "--w": `${Math.round(r.scores[k] * 100)}%` } as React.CSSProperties} />
                       </span>
                     ) : null,
                   )}
@@ -46,10 +54,7 @@ function AiActivityTable({ rows }: { rows: AiActivityRow[] }) {
               </td>
               <td>
                 {r.reasoning ? (
-                  <details className="reasoning-toggle">
-                    <summary>lihat</summary>
-                    <div className="reasoning">{r.reasoning}</div>
-                  </details>
+                  <span className="reason-preview">{r.reasoning}</span>
                 ) : (
                   <span className="muted">—</span>
                 )}
@@ -58,6 +63,47 @@ function AiActivityTable({ rows }: { rows: AiActivityRow[] }) {
           ))}
         </tbody>
       </table>
+      {selected && <AiDecisionModal row={selected} onClose={() => setSelected(null)} />}
+    </div>
+  );
+}
+
+function PositionsTable({ positions }: { positions: OpenPosition[] }) {
+  const [selected, setSelected] = useState<OpenPosition | null>(null);
+  if (!positions.length) return <p className="muted">No open positions.</p>;
+  return (
+    <div className="tablewrap">
+      <table>
+        <thead>
+          <tr>
+            <th>Token</th>
+            <th>Strategy</th>
+            <th className="num">Size (SOL)</th>
+            <th className="num">Conf</th>
+            <th>Opened</th>
+            <th>Mode</th>
+            <th>Status</th>
+          </tr>
+        </thead>
+        <tbody>
+          {positions.map((p) => (
+            <tr key={p.mint} className="clickable" onClick={() => setSelected(p)}>
+              <td className="mono token-cell" title={p.mint}>
+                {p.symbol || p.mint.slice(0, 8)}
+              </td>
+              <td>
+                <RouteBadge route={p.route} />
+              </td>
+              <td className="num mono">{p.size_sol.toFixed(4)}</td>
+              <td className="num mono">{p.confidence.toFixed(2)}</td>
+              <td className="muted">{ago(p.opened_at)}</td>
+              <td>{p.execution_mode}</td>
+              <td>{p.status}</td>
+            </tr>
+          ))}
+        </tbody>
+      </table>
+      {selected && <PositionModal pos={selected} onClose={() => setSelected(null)} />}
     </div>
   );
 }
@@ -66,22 +112,22 @@ export default function Overview() {
   const { data: ov, error } = usePoll<OverviewData>("/api/overview", 5000);
   const { data: activity } = usePoll<AiActivityRow[]>("/api/ai-activity?limit=50", 5000);
 
-  if (error) return <p className="neg">Gagal memuat: {error}</p>;
-  if (!ov) return <p className="muted">Memuat…</p>;
+  if (error) return <p className="neg">Failed to load: {error}</p>;
+  if (!ov) return <p className="muted">Loading…</p>;
 
   return (
     <>
       <div className="tiles">
         <StatTile
-          label="PnL hari ini"
+          label="PnL today"
           value={`${ov.today_pnl_sol >= 0 ? "+" : ""}${ov.today_pnl_sol.toFixed(4)} SOL`}
           tone={ov.today_pnl_sol > 0 ? "pos" : ov.today_pnl_sol < 0 ? "neg" : undefined}
         />
-        <StatTile label="Posisi terbuka" value={String(ov.open_positions.length)} />
+        <StatTile label="Open positions" value={String(ov.open_positions.length)} />
         <StatTile
           label="Win rate"
           value={`${Math.round(ov.win_rate * 100)}%`}
-          sub={`${ov.closed_count} trade tertutup`}
+          sub={`${ov.closed_count} closed trades`}
         />
         <StatTile
           label="Total PnL"
@@ -90,50 +136,24 @@ export default function Overview() {
         />
         <StatTile
           label="Circuit breaker"
-          value={ov.circuit_breaker.tripped ? "⛔ TRIPPED" : "✓ aman"}
-          sub={`limit ${ov.circuit_breaker.limit_sol} SOL/hari`}
+          value={ov.circuit_breaker.tripped ? "⛔ TRIPPED" : "✓ safe"}
+          sub={`limit ${ov.circuit_breaker.limit_sol} SOL/day`}
           tone={ov.circuit_breaker.tripped ? "neg" : undefined}
         />
       </div>
 
       <div className="card">
-        <h2>Posisi terbuka</h2>
-        {ov.open_positions.length === 0 ? (
-          <p className="muted">Tidak ada posisi terbuka.</p>
-        ) : (
-          <div className="tablewrap">
-            <table>
-              <thead>
-                <tr>
-                  <th>Token</th>
-                  <th className="num">Size (SOL)</th>
-                  <th className="num">Conf</th>
-                  <th>Dibuka</th>
-                  <th>Mode</th>
-                  <th>Status</th>
-                </tr>
-              </thead>
-              <tbody>
-                {ov.open_positions.map((p) => (
-                  <tr key={p.mint}>
-                    <td className="mono" title={p.mint}>
-                      {p.symbol || p.mint.slice(0, 8)}
-                    </td>
-                    <td className="num mono">{p.size_sol.toFixed(4)}</td>
-                    <td className="num mono">{p.confidence.toFixed(2)}</td>
-                    <td className="muted">{ago(p.opened_at)}</td>
-                    <td>{p.execution_mode}</td>
-                    <td>{p.status}</td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-          </div>
-        )}
+        <h2>
+          Open positions <span className="hint">click a row for details</span>
+        </h2>
+        <PositionsTable positions={ov.open_positions} />
       </div>
 
       <div className="card">
-        <h2>Live AI Activity</h2>
+        <h2>
+          <span className="live-dot" /> Live AI Activity{" "}
+          <span className="hint">click a row for the full decision</span>
+        </h2>
         <AiActivityTable rows={activity ?? []} />
       </div>
     </>

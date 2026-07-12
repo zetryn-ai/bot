@@ -205,6 +205,7 @@ class RiskManager:
                 confidence=decision.confidence,
                 meta=build_trade_meta(candidate, decision),
                 token_name=candidate.name,
+                route=route,
             ),
             None,
             "",

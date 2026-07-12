@@ -14,7 +14,7 @@ export function EquityChart({ points }: { points: EquityPoint[] }) {
   const PAD = { l: 54, r: 12, t: 12, b: 24 };
 
   if (points.length < 2) {
-    return <p className="muted">Belum cukup trade untuk equity curve.</p>;
+    return <p className="muted">Not enough trades for an equity curve yet.</p>;
   }
 
   const ys = points.map((p) => p.equity_sol);
@@ -40,19 +40,19 @@ export function EquityChart({ points }: { points: EquityPoint[] }) {
     <div className="chart" ref={wrap}>
       <svg viewBox={`0 0 ${W} ${H}`} onMouseMove={onMove} onMouseLeave={() => setHover(null)}>
         {/* recessive grid: zero line + min/max ticks */}
-        <line x1={PAD.l} x2={W - PAD.r} y1={zeroY} y2={zeroY} stroke="#32322f" strokeWidth={1} />
+        <line x1={PAD.l} x2={W - PAD.r} y1={zeroY} y2={zeroY} stroke="#2a2a40" strokeWidth={1} />
         {[yMax, yMin].map((v, k) => (
-          <text key={k} x={PAD.l - 6} y={y(v) + 4} textAnchor="end" fontSize={11} fill="#8a897f">
+          <text key={k} x={PAD.l - 6} y={y(v) + 4} textAnchor="end" fontSize={11} fill="#6b6b85">
             {v.toFixed(3)}
           </text>
         ))}
-        <text x={PAD.l - 6} y={zeroY + 4} textAnchor="end" fontSize={11} fill="#8a897f">0</text>
-        <path d={path} fill="none" stroke="#3987e5" strokeWidth={2} />
+        <text x={PAD.l - 6} y={zeroY + 4} textAnchor="end" fontSize={11} fill="#6b6b85">0</text>
+        <path d={path} fill="none" stroke="#9945ff" strokeWidth={2} />
         {hover !== null && (
           <g>
-            <line x1={x(hover)} x2={x(hover)} y1={PAD.t} y2={H - PAD.b} stroke="#c3c2b7" strokeWidth={1} strokeDasharray="3,3" />
+            <line x1={x(hover)} x2={x(hover)} y1={PAD.t} y2={H - PAD.b} stroke="#a0a0b8" strokeWidth={1} strokeDasharray="3,3" />
             {/* 8px marker with 2px surface ring */}
-            <circle cx={x(hover)} cy={y(points[hover].equity_sol)} r={4} fill="#3987e5" stroke="#1a1a19" strokeWidth={2} />
+            <circle cx={x(hover)} cy={y(points[hover].equity_sol)} r={4} fill="#9945ff" stroke="#1a1a2e" strokeWidth={2} />
           </g>
         )}
       </svg>
@@ -70,14 +70,14 @@ export function EquityChart({ points }: { points: EquityPoint[] }) {
 }
 
 export function BarList({ rows, labelKey }: { rows: StatGroup[]; labelKey: string }) {
-  if (!rows.length) return <p className="muted">Belum ada data.</p>;
+  if (!rows.length) return <p className="muted">No data yet.</p>;
   return (
     <div className="barlist">
       {rows.map((r, i) => {
         const label = String(r[labelKey]).slice(0, 20);
         const pct = Math.round(r.win_rate * 100);
         return (
-          <div className="row" key={i} title={`${label}: ${r.wins}/${r.trades} menang · ${r.pnl_sol.toFixed(4)} SOL`}>
+          <div className="row" key={i} title={`${label}: ${r.wins}/${r.trades} wins · ${r.pnl_sol.toFixed(4)} SOL`}>
             <span className="secondary mono">{label}</span>
             <div className="track">
               <div className={`fill${r.pnl_sol < 0 ? " negpnl" : ""}`} style={{ width: `${Math.max(pct, 2)}%` }} />

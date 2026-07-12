@@ -44,6 +44,7 @@ class PositionRepo:
             "opened_at": opened_wall,
             "execution_mode": execution_mode,
             "status": "open",
+            "route": position.route,
         }
         stmt = pg_insert(PositionModel).values(**values)
         stmt = stmt.on_conflict_do_update(
@@ -81,6 +82,7 @@ class PositionRepo:
                     opened_at=_monotonic_to_wall(pos.opened_at),
                     closed_at=_monotonic_to_wall(trade.closed_at),
                     execution_mode=execution_mode,
+                    route=pos.route,
                 )
             )
 
@@ -126,6 +128,7 @@ class PositionRepo:
                     max_hold_s=float(row.max_hold_s),
                     confidence=float(row.confidence),
                     opened_at=mono_now - elapsed,
+                    route=row.route,
                 )
             )
         return positions

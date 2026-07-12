@@ -12,23 +12,23 @@ export default function Login({ onOk }: { onOk: () => void }) {
       await api("/api/auth/check");
       onOk();
     } catch {
-      setError("Token salah.");
+      setError("Invalid token.");
     }
   };
 
   return (
     <form className="login" onSubmit={submit}>
-      <h1>zetryn-bot</h1>
-      <p className="secondary">Masukkan dashboard token.</p>
+      <h1 className="brand">ZETRYN</h1>
+      <p className="tagline">AI TRADING AGENT · SOLANA</p>
       <input
         type="password"
         value={value}
         onChange={(e) => setValue(e.target.value)}
-        placeholder="DASHBOARD_TOKEN"
+        placeholder="Dashboard token"
         autoFocus
       />
       {error && <p className="error">{error}</p>}
-      <button type="submit">Masuk</button>
+      <button type="submit">Sign in</button>
     </form>
   );
 }

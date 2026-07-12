@@ -49,6 +49,7 @@ class PositionModel(Base):
     status: Mapped[str] = mapped_column(
         String(16), default="open", index=True
     )  # open | needs_review
+    route: Mapped[str] = mapped_column(String(24), default="")  # sniper|graduation|scanner|""
 
 
 class ClosedTradeModel(Base):
@@ -66,6 +67,7 @@ class ClosedTradeModel(Base):
     opened_at: Mapped[datetime] = mapped_column(DateTime(timezone=True))
     closed_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), index=True)
     execution_mode: Mapped[str] = mapped_column(String(8))
+    route: Mapped[str] = mapped_column(String(24), default="")  # entry strategy at open time
 
 
 class RiskStateModel(Base):

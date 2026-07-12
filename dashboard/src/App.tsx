@@ -18,7 +18,9 @@ export default function App() {
   return (
     <>
       <header>
-        <h1>zetryn-bot</h1>
+        <h1 className="brand">
+          ZETRYN <span className="brand-sub">trading agent</span>
+        </h1>
         <nav>
           {TABS.map((t) => (
             <button key={t} className={tab === t ? "active" : ""} onClick={() => setTab(t)}>
@@ -33,7 +35,7 @@ export default function App() {
             setAuthed(false);
           }}
         >
-          keluar
+          Sign out
         </button>
       </header>
       {tab === "Overview" && <Overview />}

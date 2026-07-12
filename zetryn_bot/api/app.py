@@ -33,7 +33,7 @@ if not settings.dashboard_token:
 engine = build_engine(settings.database_url)
 session_factory = build_session_factory(engine)
 
-app = FastAPI(title="zetryn-bot dashboard", docs_url=None, redoc_url=None, openapi_url=None)
+app = FastAPI(title="ZETRYN dashboard", docs_url=None, redoc_url=None, openapi_url=None)
 
 
 async def require_token(request: Request) -> None:
@@ -79,10 +79,15 @@ async def overview() -> dict:
                 "mint": p.mint,
                 "symbol": p.symbol,
                 "size_sol": float(p.size_sol),
+                "tokens_atomic": int(p.tokens_atomic),
                 "confidence": float(p.confidence),
+                "take_profit_pct": float(p.take_profit_pct),
+                "stop_loss_pct": float(p.stop_loss_pct),
+                "max_hold_s": float(p.max_hold_s),
                 "opened_at": p.opened_at.isoformat(),
                 "status": p.status,
                 "execution_mode": p.execution_mode,
+                "route": p.route,
             }
             for p in open_rows
         ],
@@ -155,6 +160,7 @@ async def trades(
                 "mint": t.mint,
                 "symbol": t.symbol,
                 "size_sol": float(t.size_sol),
+                "tokens_atomic": int(t.tokens_atomic),
                 "exit_sol": float(t.exit_sol),
                 "pnl_sol": float(t.pnl_sol),
                 "reason": t.reason,
@@ -162,6 +168,8 @@ async def trades(
                 "opened_at": t.opened_at.isoformat(),
                 "closed_at": t.closed_at.isoformat(),
                 "held_minutes": (t.closed_at - t.opened_at).total_seconds() / 60,
+                "execution_mode": t.execution_mode,
+                "route": t.route,
             }
             for t in rows
         ],
@@ -196,11 +204,19 @@ async def stats() -> dict:
             for k, cnt, w, p in rows
         ]
 
+    route_key = case((ClosedTradeModel.route == "", "unrouted"), else_=ClosedTradeModel.route)
+
     async with session_factory() as session:
         by_reason = await _grouped(session, ClosedTradeModel.reason, "reason")
+        by_route = await _grouped(session, route_key, "route")
         by_conf = await _grouped(session, conf_band, "band")
         by_day = await _grouped(session, day, "day")
-    return {"by_reason": by_reason, "by_confidence": by_conf, "by_day": by_day}
+    return {
+        "by_reason": by_reason,
+        "by_route": by_route,
+        "by_confidence": by_conf,
+        "by_day": by_day,
+    }
 
 
 @app.get("/api/equity", dependencies=[Depends(require_token)])

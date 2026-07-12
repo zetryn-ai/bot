@@ -5,6 +5,37 @@ All notable changes to `zetryn-bot` will be documented in this file.
 The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and
 the project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.10.1] — 2026-07-12
+
+Dashboard overhaul: **ZETRYN** rebrand + Solana theme, full English UI,
+row-click detail modals, and end-to-end strategy (route) visibility.
+
+### Added
+
+- `route` column on `positions` and `closed_trades` (migration
+  `8c1f2a9d3b41`): the entry strategy (sniper/graduation/scanner) stamped by
+  M10b routing now persists with the position and its closed trade —
+  carried through `SwapRequest` → `Position` → `ClosedTrade`.
+- API: `/api/overview` positions expose `route`, TP/SL/max-hold and token
+  amount; `/api/trades` rows expose `route`, `tokens_atomic`,
+  `execution_mode`; `/api/stats` gains a `by_route` breakdown.
+- Dashboard: **Strategy badge** (⚡ sniper / 🎓 graduation / 🔍 scanner) on
+  Live AI Activity, Open Positions, and Trade History; "Win rate by
+  strategy" bar list on Analytics.
+- Dashboard: click any row (AI activity / open position / trade) to open a
+  **detail modal** — every recorded field: full scores with meters, complete
+  AI reasoning, guardrail reasons, outcome explanation ("where it stopped",
+  incl. what a cooldown is), exit plan, timeline, full mint with copy button
+  and Solscan/DexScreener/GMGN/Birdeye links.
+
+### Changed
+
+- Rebrand `zetryn-bot` → **ZETRYN** (gradient wordmark, favicon, API title).
+- Solana web3 theme (purple `#9945FF` → mint `#14F195`): glassmorphism
+  cards, ambient gradients, glow accents; all UI copy now English.
+- AI-activity score letters became mini meters; reasoning shows inline
+  preview (full text in the modal).
+
 ## [0.10.0] — 2026-07-12
 
 **M9 (API + Dashboard) + M10b (entry routing) land together, mid-dry-run**,
