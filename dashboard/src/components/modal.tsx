@@ -200,6 +200,20 @@ export function PositionModal({ pos, onClose }: { pos: OpenPosition; onClose: ()
         <h3>Position</h3>
         <KV
           rows={[
+            [
+              "Unrealized PnL",
+              pos.unrealized_pnl_pct === null ? (
+                <span className="muted">not marked yet</span>
+              ) : (
+                <span
+                  className={`mono ${pos.unrealized_pnl_pct > 0 ? "pos" : pos.unrealized_pnl_pct < 0 ? "neg" : "muted"}`}
+                >
+                  {pos.unrealized_pnl_pct >= 0 ? "+" : ""}
+                  {(pos.unrealized_pnl_pct * 100).toFixed(1)}%{" "}
+                  <span className="muted">(marked {ago(pos.marked_at)})</span>
+                </span>
+              ),
+            ],
             ["Opened", fmtWhen(pos.opened_at)],
             ["Held for", `${fmtDuration(heldS)}`],
             ["Entry size", <span className="mono">{pos.size_sol.toFixed(4)} SOL</span>],
@@ -230,6 +244,21 @@ export function PositionModal({ pos, onClose }: { pos: OpenPosition; onClose: ()
           ]}
         />
       </div>
+
+      {pos.partials.length > 0 && (
+        <div className="modal-section">
+          <h3>Partial exits (TP ladder)</h3>
+          <ul className="reason-list">
+            {pos.partials.map((pe, i) => (
+              <li key={i}>
+                Sold <span className="mono">{pe.sold_size.toFixed(4)} SOL</span> of basis at the{" "}
+                <span className="mono pos">+{(pe.sold_at_pnl_pct * 100).toFixed(0)}%</span> rung —{" "}
+                {ago(new Date(pe.sold_at_ts * 1000).toISOString())}
+              </li>
+            ))}
+          </ul>
+        </div>
+      )}
 
       <MintSection mint={pos.mint} />
     </Modal>

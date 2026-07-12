@@ -15,17 +15,22 @@ Peak PnL is tracked in-memory only: after a restart the trailing stop re-arms
 from the first post-restart quote (a position that peaked +50% before the
 restart starts over) — accepted for M10, persisting peaks is a follow-up.
 
-The TP ladder is configured as a single full-exit rung because the Executor
-protocol only sells whole positions; multi-rung partial exits are M10.1.
+Multi-rung partial exits (M10.1, 2026-07-12): pass ``tp_ladder`` and the
+engine feeds executed rungs back as ``PositionState.partial_exits`` so the
+framework never recommends the same rung twice. The tracker performs the
+partial sell and calls :meth:`mark_rung`.
 """
 
 from __future__ import annotations
+
+import time
 
 from loguru import logger
 from strategies.agents.lifecycle import build_lifecycle
 from trading.schemas import (
     Decision,
     LifecycleConfig,
+    PartialExit,
     PositionContext,
     PositionState,
     TokenInput,
@@ -48,19 +53,20 @@ class LifecycleEngine:
         max_hold_s: float,
         trailing_arm_pnl_pct: float = 0.20,
         trailing_drawdown_pct: float = 0.50,
+        tp_ladder: list[tuple[float, float]] | None = None,
     ) -> None:
         self._graph = build_lifecycle()  # rule mode: deterministic, sub-ms
+        self._ladder = sorted(tp_ladder or [(take_profit_pct, 1.0)], key=lambda r: r[0])
         self._config = LifecycleConfig(
             decision_mode="rule",
             stop_loss_pct=-abs(stop_loss_pct),
             max_hold_seconds=max_hold_s,
             trailing_arms_at_pnl_pct=trailing_arm_pnl_pct,
             trailing_drawdown_pct=trailing_drawdown_pct,
-            # Single rung selling 100% at TP — matches the Executor protocol
-            # (whole-position sells only). Multi-rung partials are M10.1.
-            tp_ladder=[(take_profit_pct, 1.0)],
+            tp_ladder=self._ladder,
         )
         self._peaks: dict[str, float] = {}
+        self._partials: dict[str, list[PartialExit]] = {}
 
     async def evaluate(self, position: Position, current_sol: float, holding_s: float) -> Decision:
         """Run one lifecycle tick. ``action == "hold"`` keeps the position open."""
@@ -87,6 +93,7 @@ class LifecycleEngine:
                 holding_seconds=holding_s,
                 peak_pnl_pct=peak,
                 drawdown_from_peak_pct=drawdown,
+                partial_exits=self._partials.get(position.mint, []),
             ),
             config=self._config,
         )
@@ -94,8 +101,35 @@ class LifecycleEngine:
         return state.output
 
     def forget(self, mint: str) -> None:
-        """Drop peak bookkeeping once a position closes."""
+        """Drop peak + rung bookkeeping once a position closes."""
         self._peaks.pop(mint, None)
+        self._partials.pop(mint, None)
+
+    def mark_rung(self, mint: str, pnl_pct: float, sold_size: float) -> float:
+        """Record an executed partial exit and return the RUNG threshold hit.
+
+        The framework skips rungs by exact threshold match against
+        ``partial_exits[].sold_at_pnl_pct``, so the recorded value must be the
+        configured threshold — recording the actual pnl (e.g. 0.312 for the
+        0.30 rung) would refire the rung every sweep and drain the position.
+        """
+        hit = {round(pe.sold_at_pnl_pct, 6) for pe in self._partials.get(mint, [])}
+        rung = next(
+            (t for t, _ in self._ladder if round(t, 6) not in hit and pnl_pct >= t),
+            pnl_pct,
+        )
+        self._partials.setdefault(mint, []).append(
+            PartialExit(sold_at_pnl_pct=rung, sold_size=sold_size, sold_at_ts=time.time())
+        )
+        return rung
+
+    def restore_partials(self, mint: str, entries: list[dict]) -> None:
+        """Rebuild executed rungs after a restart (from the positions row)."""
+        if entries:
+            self._partials[mint] = [PartialExit(**e) for e in entries]
+
+    def partials_as_dicts(self, mint: str) -> list[dict]:
+        return [pe.model_dump() for pe in self._partials.get(mint, [])]
 
     @staticmethod
     def close_reason(decision: Decision) -> str:

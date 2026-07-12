@@ -54,6 +54,37 @@ class PositionRepo:
         async with self._sf() as session, session.begin():
             await session.execute(stmt)
 
+    async def update_mark(self, mint: str, pnl_pct: float) -> None:
+        """Persist the sweep's mark-to-market pnl (dashboard progress bar)."""
+        async with self._sf() as session, session.begin():
+            await session.execute(
+                update(PositionModel)
+                .where(PositionModel.mint == mint)
+                .values(
+                    unrealized_pnl_pct=Decimal(str(round(pnl_pct, 6))),
+                    marked_at=datetime.now(UTC),
+                )
+            )
+
+    async def update_partials(self, mint: str, partials: list[dict]) -> None:
+        """Persist executed TP-ladder rungs so a restart can't refire them."""
+        async with self._sf() as session, session.begin():
+            await session.execute(
+                update(PositionModel).where(PositionModel.mint == mint).values(partials=partials)
+            )
+
+    async def load_partials_map(self) -> dict[str, list[dict]]:
+        """``{mint: executed rungs}`` for every open position (restart restore)."""
+        async with self._sf() as session:
+            rows = (
+                await session.execute(
+                    select(PositionModel.mint, PositionModel.partials).where(
+                        PositionModel.status == "open"
+                    )
+                )
+            ).all()
+        return {mint: partials or [] for mint, partials in rows}
+
     async def delete_open(self, mint: str) -> None:
         async with self._sf() as session, session.begin():
             await session.execute(delete(PositionModel).where(PositionModel.mint == mint))

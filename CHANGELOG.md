@@ -5,6 +5,33 @@ All notable changes to `zetryn-bot` will be documented in this file.
 The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and
 the project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.11.0] — 2026-07-12
+
+**M10.1 — the sniper can actually trade, and winners can run.** Curve
+execution adapter + partial take-profit ladder + live PnL position cards.
+
+### Added
+
+- **Pump.fun curve execution adapter** (`execution/pumpcurve.py`): paper
+  fills and exit pricing straight from the bonding curve's constant-product
+  math (`frontend-api-v3.pump.fun` state, verified live; 1% fee applied).
+  Every sniper BUY previously died "no quote" — fresh launches aren't on
+  Jupiter for minutes. PaperExecutor and the position sweep now fall back
+  to the curve whenever Jupiter has no route.
+- **Partial take-profit ladder** (`EXIT_TP_LADDER`, default
+  `0.3:0.5,1.0:1.0`): sell 50% at +30%, let the rest ride to +100% under
+  the trailing stop. Realized slices land in `closed_trades` as
+  `partial_tp`; executed rungs persist (`positions.partials`) so restarts
+  can't refire a rung. Uses the framework's multi-rung `tp_ladder` +
+  `PartialExit` feedback. Rationale: avg win +0.02 vs avg loss −0.013 SOL
+  needed WR > 36% to break even — capped winners were the bind.
+- **Mark-to-market**: each sweep persists `unrealized_pnl_pct`/`marked_at`
+  (migration `b7d4e2c91a55`); `/api/overview` exposes them + partials.
+- **Dashboard: position cards** replace the table — each card has a PnL
+  progress bar (center = entry, green fill right toward TP, red fill left
+  toward SL, gray notch when flat/unmarked), partial-exit badge, and live
+  unrealized PnL that updates every sweep.
+
 ## [0.10.4] — 2026-07-12
 
 Audit follow-ups: specialist routes visible in the live feed + two silent

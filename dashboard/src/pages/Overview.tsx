@@ -70,43 +70,72 @@ function AiActivityTable({ rows }: { rows: AiActivityRow[] }) {
   );
 }
 
-function PositionsTable({ positions }: { positions: OpenPosition[] }) {
+function PnlBar({ pos }: { pos: OpenPosition }) {
+  // Center = entry. Fill grows RIGHT toward TP (green) or LEFT toward SL
+  // (red); neutral gray notch when flat or unmarked. Half-width is scaled to
+  // the position's own TP/SL targets, so a full bar = target reached.
+  const pnl = pos.unrealized_pnl_pct;
+  const tp = Math.max(pos.take_profit_pct, 0.0001);
+  const sl = Math.max(Math.abs(pos.stop_loss_pct), 0.0001);
+  const stale = !pos.marked_at || Date.now() - new Date(pos.marked_at).getTime() > 120_000;
+  const flat = pnl === null || stale || Math.abs(pnl) < 0.001;
+  const pct = pnl ?? 0;
+  const width = flat ? 0 : Math.min(1, Math.abs(pct) / (pct >= 0 ? tp : sl)) * 50;
+  return (
+    <div className="pnlbar-wrap">
+      <div className="pnlbar-labels">
+        <span className="neg mono">−{(sl * 100).toFixed(0)}% SL</span>
+        <span
+          className={`pnlbar-value mono ${flat ? "muted" : pct > 0 ? "pos" : "neg"}`}
+          title={stale ? "waiting for the next price mark" : "live unrealized PnL"}
+        >
+          {pnl === null || stale ? "…" : `${pct >= 0 ? "+" : ""}${(pct * 100).toFixed(1)}%`}
+        </span>
+        <span className="pos mono">+{(tp * 100).toFixed(0)}% TP</span>
+      </div>
+      <div className="pnlbar">
+        {!flat && pct < 0 && (
+          <div className="fill loss" style={{ width: `${width}%`, right: "50%" }} />
+        )}
+        {!flat && pct > 0 && (
+          <div className="fill gain" style={{ width: `${width}%`, left: "50%" }} />
+        )}
+        <div className={`center-notch ${flat ? "idle" : ""}`} />
+      </div>
+    </div>
+  );
+}
+
+function PositionsGrid({ positions }: { positions: OpenPosition[] }) {
   const [selected, setSelected] = useState<OpenPosition | null>(null);
   if (!positions.length) return <p className="muted">No open positions.</p>;
   return (
-    <div className="tablewrap">
-      <table>
-        <thead>
-          <tr>
-            <th>Token</th>
-            <th>Route</th>
-            <th className="num">Size (SOL)</th>
-            <th className="num">Conf</th>
-            <th>Opened</th>
-            <th>Mode</th>
-            <th>Status</th>
-          </tr>
-        </thead>
-        <tbody>
-          {positions.map((p) => (
-            <tr key={p.mint} className="clickable" onClick={() => setSelected(p)}>
-              <td className="mono token-cell" title={p.mint}>
-                {p.symbol || p.mint.slice(0, 8)}
-              </td>
-              <td>
-                <RouteBadge route={p.route} />
-              </td>
-              <td className="num mono">{p.size_sol.toFixed(4)}</td>
-              <td className="num mono">{p.confidence.toFixed(2)}</td>
-              <td className="muted">{ago(p.opened_at)}</td>
-              <td>{p.execution_mode}</td>
-              <td>{p.status}</td>
-            </tr>
-          ))}
-        </tbody>
-      </table>
+    <>
+      <div className="positions-grid">
+        {positions.map((p) => (
+          <div key={p.mint} className="position-card clickable" onClick={() => setSelected(p)}>
+            <div className="pos-head">
+              <span className="mono token-cell">{p.symbol || p.mint.slice(0, 8)}</span>
+              <RouteBadge route={p.route} />
+              {p.partials.length > 0 && (
+                <span className="badge good" title="Part of this position was already sold at a TP rung">
+                  💰 partial ×{p.partials.length}
+                </span>
+              )}
+              <span className="pos-age muted">{ago(p.opened_at)}</span>
+            </div>
+            <PnlBar pos={p} />
+            <div className="pos-meta muted">
+              <span className="mono">{p.size_sol.toFixed(4)} SOL</span>
+              <span>conf <span className="mono">{p.confidence.toFixed(2)}</span></span>
+              <span>{p.execution_mode}</span>
+              <span>{p.status}</span>
+            </div>
+          </div>
+        ))}
+      </div>
       {selected && <PositionModal pos={selected} onClose={() => setSelected(null)} />}
-    </div>
+    </>
   );
 }
 
@@ -148,7 +177,7 @@ export default function Overview() {
         <h2>
           Open positions <span className="hint">click a row for details</span>
         </h2>
-        <PositionsTable positions={ov.open_positions} />
+        <PositionsGrid positions={ov.open_positions} />
       </div>
 
       <div className="card">

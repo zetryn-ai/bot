@@ -182,3 +182,43 @@ async def test_tracker_without_engine_keeps_static_behaviour():
     await tracker.add(_pos())
     await tracker.check_once()
     assert tracker.open_count() == 1
+
+
+# ── M10.1: partial TP ladder ─────────────────────────────────────────────────
+
+
+@pytest.mark.asyncio
+async def test_ladder_first_rung_is_partial_then_skipped():
+    eng = _engine(tp_ladder=[(0.30, 0.5), (1.00, 1.0)])
+    d = await eng.evaluate(_pos(size_sol=0.2), current_sol=0.27, holding_s=60)  # +35%
+    assert d.action in ("take_profit", "scale_out")
+    assert d.size == pytest.approx(0.1, rel=1e-3)  # 50% of current basis
+
+    # Rung recorded at its THRESHOLD (0.30), not the actual pnl (0.35) —
+    # otherwise the framework refires the rung every sweep.
+    rung = eng.mark_rung("MintA", pnl_pct=0.35, sold_size=0.1)
+    assert rung == pytest.approx(0.30)
+
+    d2 = await eng.evaluate(_pos(size_sol=0.1), current_sol=0.135, holding_s=90)  # still +35%
+    assert d2.action == "hold"
+
+
+@pytest.mark.asyncio
+async def test_ladder_final_rung_full_exit():
+    eng = _engine(tp_ladder=[(0.30, 0.5), (1.00, 1.0)])
+    eng.mark_rung("MintA", pnl_pct=0.31, sold_size=0.1)
+    d = await eng.evaluate(_pos(size_sol=0.1), current_sol=0.21, holding_s=60)  # +110%
+    assert d.action == "exit_full"
+    assert LifecycleEngine.close_reason(d) == "take_profit"
+
+
+@pytest.mark.asyncio
+async def test_restore_partials_survives_restart():
+    eng = _engine(tp_ladder=[(0.30, 0.5), (1.00, 1.0)])
+    eng.mark_rung("MintA", pnl_pct=0.32, sold_size=0.1)
+    dumped = eng.partials_as_dicts("MintA")
+
+    fresh = _engine(tp_ladder=[(0.30, 0.5), (1.00, 1.0)])
+    fresh.restore_partials("MintA", dumped)
+    d = await fresh.evaluate(_pos(size_sol=0.1), current_sol=0.135, holding_s=60)  # +35%
+    assert d.action == "hold"  # rung not refired after restart

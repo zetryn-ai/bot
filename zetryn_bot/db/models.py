@@ -50,6 +50,11 @@ class PositionModel(Base):
         String(16), default="open", index=True
     )  # open | needs_review
     route: Mapped[str] = mapped_column(String(24), default="")  # sniper|graduation|scanner|""
+    # Mark-to-market (written by the monitor sweep; read by the dashboard).
+    unrealized_pnl_pct: Mapped[Decimal | None] = mapped_column(Numeric(12, 6), nullable=True)
+    marked_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    # Executed TP-ladder rungs: [{sold_at_pnl_pct, sold_size, sold_at_ts}].
+    partials: Mapped[list] = mapped_column(JSONB, default=list)
 
 
 class ClosedTradeModel(Base):

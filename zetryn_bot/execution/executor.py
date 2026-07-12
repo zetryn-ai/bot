@@ -89,32 +89,46 @@ class Executor(Protocol):
 
 
 class PaperExecutor:
-    """Simulated fills at real Jupiter prices — no keypair, no transaction."""
+    """Simulated fills at real prices — no keypair, no transaction.
 
-    def __init__(self, jupiter: JupiterQuote, *, slippage_bps: int = 100) -> None:
+    Jupiter is the primary price source; when it has no route (tokens still
+    on the pump.fun bonding curve are not indexed for minutes) the optional
+    ``curve`` quoter fills from the curve's constant-product math instead —
+    without it, every sniper entry died as "no quote" (2026-07-12). LIVE
+    curve execution needs the PumpPortal trade API and is out of paper scope.
+    """
+
+    def __init__(self, jupiter: JupiterQuote, *, slippage_bps: int = 100, curve=None) -> None:
         self._jup = jupiter
         self._slippage_bps = slippage_bps
+        self._curve = curve  # PumpCurveQuote | None
 
     async def buy(self, req: SwapRequest) -> Position | None:
-        q = await self._jup.quote(
-            SOL_MINT, req.mint, sol_to_lamports(req.size_sol), self._slippage_bps
-        )
-        if q is None or q.out_amount <= 0:
+        lamports_in = sol_to_lamports(req.size_sol)
+        q = await self._jup.quote(SOL_MINT, req.mint, lamports_in, self._slippage_bps)
+        venue = "PAPER"
+        tokens_out = q.out_amount if q is not None else 0
+        if tokens_out <= 0 and self._curve is not None:
+            curve_out = await self._curve.buy_quote(req.mint, lamports_in)
+            if curve_out:
+                tokens_out = curve_out
+                venue = "PAPER-CURVE"
+        if tokens_out <= 0:
             log.warning("PAPER BUY {} aborted — no quote", req.symbol or req.mint[:8])
             return None
         log.info(
-            "PAPER BUY {} size={:.4f} SOL -> {} tokens (impact {:.2%}, conf {:.2f})",
+            "{} BUY {} size={:.4f} SOL -> {} tokens (conf {:.2f})",
+            venue,
             req.symbol or req.mint[:8],
             req.size_sol,
-            q.out_amount,
-            q.price_impact_pct,
+            tokens_out,
             req.confidence,
         )
         return Position(
             mint=req.mint,
             symbol=req.symbol,
             size_sol=req.size_sol,
-            tokens_atomic=q.out_amount,
+            tokens_atomic=tokens_out,
             take_profit_pct=req.take_profit_pct,
             stop_loss_pct=req.stop_loss_pct,
             max_hold_s=req.max_hold_s,
@@ -128,13 +142,21 @@ class PaperExecutor:
         q = await self._jup.quote(
             position.mint, SOL_MINT, position.tokens_atomic, self._slippage_bps
         )
-        if q is None:
+        venue = "PAPER"
+        lamports_out = q.out_amount if q is not None else 0
+        if lamports_out <= 0 and self._curve is not None:
+            curve_out = await self._curve.sell_quote(position.mint, position.tokens_atomic)
+            if curve_out:
+                lamports_out = curve_out
+                venue = "PAPER-CURVE"
+        if lamports_out <= 0:
             log.warning("PAPER SELL {} aborted — no quote (still open)", position.symbol)
             return None
-        exit_sol = lamports_to_sol(q.out_amount)
+        exit_sol = lamports_to_sol(lamports_out)
         pnl = exit_sol - position.size_sol
         log.info(
-            "PAPER SELL {} -> {:.4f} SOL | pnl={:+.4f} SOL ({:+.1%}) reason={}",
+            "{} SELL {} -> {:.4f} SOL | pnl={:+.4f} SOL ({:+.1%}) reason={}",
+            venue,
             position.symbol or position.mint[:8],
             exit_sol,
             pnl,

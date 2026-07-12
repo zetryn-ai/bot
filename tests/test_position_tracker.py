@@ -225,3 +225,86 @@ async def test_cooldown_disabled_by_default():
     await _open(tracker)
     await tracker.check_once()
     assert tracker.in_cooldown("MintA") is False
+
+
+# ── M10.1: partial TP via tracker ────────────────────────────────────────────
+
+
+@pytest.mark.asyncio
+async def test_partial_tp_sells_half_and_keeps_riding():
+    from zetryn_bot.execution.lifecycle import LifecycleEngine
+
+    class _PropJupiter:
+        """Out-amount scales with the tokens sold (partials sell fractions)."""
+
+        async def quote(self, input_mint, output_mint, amount_atomic, slippage_bps=100):
+            return Quote(
+                in_amount=amount_atomic,
+                out_amount=sol_to_lamports(0.27 * amount_atomic / 1_000_000),
+                price_impact_pct=0.0,
+            )
+
+    clock = _Clock()
+    jup = _PropJupiter()  # +35% on a 0.2 SOL basis at full size
+    risk = RiskManager(RiskConfig())
+    lifecycle = LifecycleEngine(
+        take_profit_pct=0.30,
+        stop_loss_pct=0.15,
+        max_hold_s=1800.0,
+        tp_ladder=[(0.30, 0.5), (1.00, 1.0)],
+    )
+    tracker = PositionTracker(PaperExecutor(jup), jup, risk, now_fn=clock, lifecycle=lifecycle)
+    await _open(tracker, size_sol=0.2)
+
+    await tracker.check_once()
+    assert tracker.open_count() == 1  # remainder still open
+    pos = tracker._open["MintA"]
+    assert pos.tokens_atomic == 500_000
+    assert pos.size_sol == pytest.approx(0.1)
+    s = tracker.stats()
+    assert s["closed"] == 1  # the partial slice is a realized trade
+    assert s["total_pnl_sol"] == pytest.approx(0.035, rel=0.05)  # 0.135 out vs 0.1 basis
+
+    # Same price next sweep: rung already hit -> no second partial.
+    await tracker.check_once()
+    assert tracker.open_count() == 1
+    assert tracker.stats()["closed"] == 1
+
+
+# ── curve fallback pricing ───────────────────────────────────────────────────
+
+
+class _NoRouteJupiter:
+    async def quote(self, *a, **kw):
+        return None
+
+    async def quote_or_status(self, *a, **kw):
+        return None, 400  # permanent no-route
+
+
+class _FakeCurve:
+    def __init__(self, sol_out_lamports: int) -> None:
+        self.sol_out = sol_out_lamports
+
+    async def sell_quote(self, mint, tokens_atomic):
+        return self.sol_out
+
+    async def buy_quote(self, mint, sol_lamports):
+        return 1_000_000
+
+
+@pytest.mark.asyncio
+async def test_curve_fallback_prices_and_exits_when_jupiter_has_no_route():
+    clock = _Clock()
+    jup = _NoRouteJupiter()
+    risk = RiskManager(RiskConfig())
+    curve = _FakeCurve(sol_to_lamports(0.27))  # +35% -> static TP fires
+    tracker = PositionTracker(
+        PaperExecutor(jup, curve=curve), jup, risk, now_fn=clock, curve=curve
+    )
+    await _open(tracker, size_sol=0.2, tp=0.3)
+    await tracker.check_once()
+    assert tracker.open_count() == 0
+    trade = tracker._closed[0]
+    assert trade.reason == "take_profit"
+    assert trade.exit_sol == pytest.approx(0.27)

@@ -58,7 +58,7 @@ def _build_notifier(settings: Settings) -> Notifier:
     )
 
 
-def _build_executor(settings: Settings, jupiter):
+def _build_executor(settings: Settings, jupiter, curve=None):
     """Return ``(executor, rpc, wallet_pubkey)``. Live only when every guard passes.
 
     Live requires: EXECUTION_MODE=="live" AND the wallet keyfile decrypts
@@ -71,7 +71,7 @@ def _build_executor(settings: Settings, jupiter):
 
     if settings.execution_mode != "live":
         log.info("execution ENABLED (paper) — base_size={} SOL", settings.risk_base_size_sol)
-        return PaperExecutor(jupiter), None, None
+        return PaperExecutor(jupiter, curve=curve), None, None
 
     from zetryn_bot.execution.live import LiveExecutor
     from zetryn_bot.execution.rpc import SolanaRpc
@@ -83,7 +83,7 @@ def _build_executor(settings: Settings, jupiter):
         log.error(
             "LIVE execution requested but wallet failed to load ({}) — falling back to PAPER", exc
         )
-        return PaperExecutor(jupiter), None, None
+        return PaperExecutor(jupiter, curve=curve), None, None
 
     rpc = SolanaRpc(settings.solana_rpc_url)
     executor = LiveExecutor(
@@ -178,9 +178,14 @@ async def build_orchestrator(settings: Settings) -> Orchestrator:
         from zetryn_bot.execution.position import PositionTracker
         from zetryn_bot.execution.risk import RiskConfig, RiskManager
 
+        from zetryn_bot.execution.pumpcurve import PumpCurveQuote
+
         jupiter = JupiterQuote()
+        # Curve-phase pricing for fresh pump.fun tokens Jupiter can't route
+        # yet — shared by the executor (fills) and the tracker (sweeps).
+        curve = PumpCurveQuote()
         is_live = settings.execution_mode == "live"
-        executor, rpc, wallet_pubkey = _build_executor(settings, jupiter)
+        executor, rpc, wallet_pubkey = _build_executor(settings, jupiter, curve)
 
         # M6 repos (None when Postgres is unreachable → in-memory, M4/M5 behaviour).
         risk_repo = position_repo = None
@@ -226,6 +231,7 @@ async def build_orchestrator(settings: Settings) -> Orchestrator:
                 max_hold_s=settings.exit_max_hold_s,
                 trailing_arm_pnl_pct=settings.exit_trailing_arm_pnl_pct,
                 trailing_drawdown_pct=settings.exit_trailing_drawdown_pct,
+                tp_ladder=settings.parsed_tp_ladder() or None,
             )
             log.info(
                 "lifecycle agent ENABLED — framework rule exits "
@@ -248,6 +254,7 @@ async def build_orchestrator(settings: Settings) -> Orchestrator:
             notifier=notifier,
             lifecycle=lifecycle,
             reentry_cooldown_s=settings.risk_reentry_cooldown_s,
+            curve=curve,
         )
         await tracker.load_and_reconcile(wallet_pubkey, rpc)  # restore + (live) verify on-chain
 

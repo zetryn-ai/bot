@@ -41,6 +41,7 @@ class PositionTracker:
         dead_route_after: int = 10,  # consecutive no-route sweeps before a dead-route close
         lifecycle=None,  # LifecycleEngine | None — None keeps static TP/SL/max-hold exits
         reentry_cooldown_s: float = 0.0,  # block re-buying a mint this long after ANY close
+        curve=None,  # PumpCurveQuote | None — prices curve-phase tokens Jupiter can't route
     ) -> None:
         from zetryn_bot.notify.telegram import NullNotifier
 
@@ -63,6 +64,7 @@ class PositionTracker:
         # (mogdog: 3 TP +0.061 vs 7 SL -0.075), so the cooldown is flat
         # across close reasons.
         self._reentry_cooldown_s = reentry_cooldown_s
+        self._curve = curve
         self._cooldowns: dict[str, float] = {}  # mint -> monotonic deadline
         self._route_fails: dict[str, int] = {}
         self._open: dict[str, Position] = {}
@@ -128,6 +130,13 @@ class PositionTracker:
             len(self._open),
             reviewed,
         )
+        # Restore executed TP-ladder rungs so a restart can't refire a rung
+        # that already sold (each refire would halve the position again).
+        if self._lifecycle is not None and hasattr(self._repo, "load_partials_map"):
+            partials_map = await self._repo.load_partials_map()
+            for mint, entries in partials_map.items():
+                if mint in self._open:
+                    self._lifecycle.restore_partials(mint, entries)
         # Rebuild re-entry cooldowns from recent closed trades — otherwise a
         # container restart would reset every cooldown and churn could resume.
         if self._reentry_cooldown_s > 0:
@@ -149,25 +158,60 @@ class PositionTracker:
             return "max_hold"
         return None
 
-    async def _evaluate_exit(self, position: Position, current_sol: float) -> str | None:
-        """Exit decision for one position: framework lifecycle agent (M10)
-        when configured, else the static TP/SL/max-hold rules."""
-        if self._lifecycle is None:
-            return self._exit_reason(position, current_sol)
-        decision = await self._lifecycle.evaluate(
-            position, current_sol, self._now() - position.opened_at
-        )
-        if decision is None or decision.action == "hold":
-            return None
-        reason = self._lifecycle.close_reason(decision)
+    async def _mark(self, mint: str, pnl_pct: float) -> None:
+        """Persist the mark-to-market pnl for the dashboard. Best-effort."""
+        if self._repo is not None and hasattr(self._repo, "update_mark"):
+            try:
+                await self._repo.update_mark(mint, pnl_pct)
+            except Exception:
+                log.exception("mark-to-market update failed (trading unaffected)")
+
+    async def _partial_close(self, position: Position, decision, pnl_pct: float) -> None:
+        """Sell a ladder-rung fraction, keep the remainder riding.
+
+        ``decision.size`` is the SOL slice of the CURRENT basis to sell (the
+        framework computes ``fraction * current_size``). The remainder keeps
+        the entry-relative SL and the (already armed) trailing stop; the
+        realized slice lands in ``closed_trades`` as ``partial_tp``.
+        """
+        from dataclasses import replace
+
+        if not decision.size or position.size_sol <= 0:
+            return
+        fraction = min(1.0, float(decision.size) / position.size_sol)
+        tokens_part = min(position.tokens_atomic, int(position.tokens_atomic * fraction))
+        if tokens_part <= 0:
+            return
+        basis_part = position.size_sol * fraction
+        partial_pos = replace(position, tokens_atomic=tokens_part, size_sol=basis_part)
+        trade = await self._executor.sell(partial_pos, "partial_tp")
+        if trade is None:
+            return  # sell failed — rung stays un-hit, retried next sweep
+        position.tokens_atomic -= tokens_part
+        position.size_sol = max(0.0, position.size_sol - basis_part)
+        rung = self._lifecycle.mark_rung(position.mint, pnl_pct, basis_part)
+        self._closed.append(trade)
+        if self._repo is not None:
+            await self._repo.save_closed_trade(trade, self._execution_mode)
+            await self._repo.save_open(position, self._execution_mode)
+            if hasattr(self._repo, "update_partials"):
+                await self._repo.update_partials(
+                    position.mint, self._lifecycle.partials_as_dicts(position.mint)
+                )
+        await self._risk.record_close(trade.pnl_sol)
         log.info(
-            "lifecycle exit {} — action={} reason={} | {}",
+            "PARTIAL TP {} — rung +{:.0%}: sold {:.0%} ({:+.4f} SOL), {} tokens ride on",
             position.symbol or position.mint[:8],
-            decision.action,
-            reason,
-            "; ".join(decision.reasons[:2]),
+            rung,
+            fraction,
+            trade.pnl_sol,
+            position.tokens_atomic,
         )
-        return reason
+        await self._notifier.notify(
+            f"💰 <b>PARTIAL TP</b> {position.symbol or position.mint[:8]} — "
+            f"rung +{rung:.0%}: sold {fraction:.0%} for {trade.pnl_sol:+.4f} SOL; "
+            f"remainder rides with trailing stop"
+        )
 
     async def _quote_with_status(self, mint: str, atomic: int):
         """Quote with HTTP status when the client supports it (duck-typed so
@@ -211,8 +255,17 @@ class PositionTracker:
         for mint, position in list(self._open.items()):
             age_expired = (self._now() - position.opened_at) >= position.max_hold_s
             q, status = await self._quote_with_status(mint, position.tokens_atomic)
+            current_lamports = q.out_amount if q is not None else 0
 
-            if q is None:
+            # Curve-phase tokens (fresh pump.fun launches) aren't routable on
+            # Jupiter yet — price them from the bonding curve instead so TP/SL
+            # and mark-to-market work from the first sweep.
+            if current_lamports <= 0 and self._curve is not None:
+                curve_out = await self._curve.sell_quote(mint, position.tokens_atomic)
+                if curve_out:
+                    current_lamports = curve_out
+
+            if current_lamports <= 0:
                 transient = status is None or status == 429 or status >= 500
                 if transient:
                     continue  # price will come back; retry next sweep
@@ -237,8 +290,32 @@ class PositionTracker:
                 continue
 
             self._route_fails.pop(mint, None)
-            current_sol = lamports_to_sol(q.out_amount)
-            reason = await self._evaluate_exit(position, current_sol)
+            current_sol = lamports_to_sol(current_lamports)
+            pnl_pct = (
+                (current_sol - position.size_sol) / position.size_sol if position.size_sol else 0.0
+            )
+            await self._mark(mint, pnl_pct)
+
+            if self._lifecycle is None:
+                reason = self._exit_reason(position, current_sol)
+            else:
+                decision = await self._lifecycle.evaluate(
+                    position, current_sol, self._now() - position.opened_at
+                )
+                if decision is None or decision.action == "hold":
+                    continue
+                # Non-final ladder rungs sell a fraction and keep riding.
+                if decision.action in ("take_profit", "scale_out") and decision.size:
+                    await self._partial_close(position, decision, pnl_pct)
+                    continue
+                reason = self._lifecycle.close_reason(decision)
+                log.info(
+                    "lifecycle exit {} — action={} reason={} | {}",
+                    position.symbol or mint[:8],
+                    decision.action,
+                    reason,
+                    "; ".join(decision.reasons[:2]),
+                )
             if reason is None:
                 continue
             trade = await self._executor.sell(position, reason)

@@ -88,6 +88,11 @@ async def overview() -> dict:
                 "status": p.status,
                 "execution_mode": p.execution_mode,
                 "route": p.route,
+                "unrealized_pnl_pct": (
+                    float(p.unrealized_pnl_pct) if p.unrealized_pnl_pct is not None else None
+                ),
+                "marked_at": p.marked_at.isoformat() if p.marked_at is not None else None,
+                "partials": p.partials or [],
             }
             for p in open_rows
         ],

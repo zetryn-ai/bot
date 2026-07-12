@@ -45,6 +45,9 @@ export interface OpenPosition {
   status: string;
   execution_mode: string;
   route: string;
+  unrealized_pnl_pct: number | null;
+  marked_at: string | null;
+  partials: { sold_at_pnl_pct: number; sold_size: number; sold_at_ts: number }[];
 }
 
 export interface Overview {

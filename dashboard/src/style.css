@@ -168,6 +168,36 @@ td.num, th.num { text-align: right; font-variant-numeric: tabular-nums; }
 .badge.info    { border-color: rgba(0, 229, 255, 0.5); color: var(--info); background: rgba(0, 229, 255, 0.07); }
 .badge.route   { border-color: rgba(153, 69, 255, 0.55); color: #c9a2ff; background: rgba(153, 69, 255, 0.1); }
 
+/* ── open position cards + PnL progress bar ── */
+.positions-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(320px, 1fr)); gap: 12px; }
+.position-card {
+  background: rgba(255, 255, 255, 0.02);
+  border: 1px solid var(--border-default); border-radius: 12px;
+  padding: 12px 14px; cursor: pointer; transition: border-color 0.15s, box-shadow 0.15s;
+}
+.position-card:hover { border-color: var(--border-glow); box-shadow: var(--glow-primary); }
+.pos-head { display: flex; align-items: center; gap: 8px; margin-bottom: 10px; }
+.pos-head .token-cell { font-size: 15px; }
+.pos-head .pos-age { margin-left: auto; font-size: 12px; }
+.pos-meta { display: flex; gap: 14px; font-size: 12px; margin-top: 10px; flex-wrap: wrap; }
+.pnlbar-wrap { user-select: none; }
+.pnlbar-labels { display: flex; justify-content: space-between; align-items: baseline; font-size: 11px; margin-bottom: 4px; }
+.pnlbar-value { font-size: 15px; font-weight: 700; }
+.pnlbar {
+  position: relative; height: 12px; border-radius: 6px; overflow: hidden;
+  background:
+    linear-gradient(to right, rgba(255, 61, 113, 0.12), rgba(107, 107, 133, 0.1) 50%, rgba(20, 241, 149, 0.12));
+  border: 1px solid var(--border-subtle);
+}
+.pnlbar .fill { position: absolute; top: 0; bottom: 0; transition: width 0.6s ease; }
+.pnlbar .fill.gain { background: linear-gradient(90deg, rgba(20, 241, 149, 0.35), var(--accent-secondary)); box-shadow: 0 0 10px rgba(20, 241, 149, 0.5); }
+.pnlbar .fill.loss { background: linear-gradient(270deg, rgba(255, 61, 113, 0.35), var(--danger)); box-shadow: 0 0 10px rgba(255, 61, 113, 0.5); }
+.pnlbar .center-notch {
+  position: absolute; left: 50%; top: -2px; bottom: -2px; width: 2px;
+  transform: translateX(-50%); background: var(--text-muted); opacity: 0.8;
+}
+.pnlbar .center-notch.idle { background: var(--text-muted); opacity: 0.5; }
+
 /* ── AI activity ── */
 .reasoning { white-space: normal; color: var(--text-secondary); font-size: 12.5px; line-height: 1.55; }
 .reason-preview {

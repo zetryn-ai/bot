@@ -185,6 +185,23 @@ class Settings(BaseSettings):
     lifecycle_enabled: bool = False
     exit_trailing_arm_pnl_pct: float = 0.20  # trailing arms after +20% peak
     exit_trailing_drawdown_pct: float = 0.50  # exit at 50% given back from peak
+    # TP ladder "pnl:fraction_of_current,..." — partial exits (M10.1). Default:
+    # bank 50% at +30% (the old full-TP level), let the rest ride to +100%
+    # under the trailing stop. Losers still cost the full SL, but winners can
+    # now pay for more than one loser — the 24h data (avg win +0.02 vs avg
+    # loss -0.013 = breakeven at 36% WR) showed capped winners were the bind.
+    # Empty string = single full exit at EXIT_TP_PCT (old behaviour).
+    exit_tp_ladder: str = "0.3:0.5,1.0:1.0"
+
+    def parsed_tp_ladder(self) -> list[tuple[float, float]]:
+        rungs: list[tuple[float, float]] = []
+        for part in self.exit_tp_ladder.split(","):
+            part = part.strip()
+            if not part:
+                continue
+            threshold, _, fraction = part.partition(":")
+            rungs.append((float(threshold), float(fraction)))
+        return sorted(rungs, key=lambda r: r[0])
 
     # ── Wallet + live execution (M5) ─────────────────────────────────────────
     # execution_mode selects the Executor when execution_enabled=True.

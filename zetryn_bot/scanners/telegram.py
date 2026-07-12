@@ -171,8 +171,7 @@ class TelegramScanner:
             if not text:
                 return
             self._log.debug(
-                f"msg from {ch_config.display_name}: {len(text)} chars, "
-                f"{len(parts) - 1} url(s)"
+                f"msg from {ch_config.display_name}: {len(text)} chars, {len(parts) - 1} url(s)"
             )
             for address in _extract_solana_addresses(text):
                 candidate = TokenCandidate(
