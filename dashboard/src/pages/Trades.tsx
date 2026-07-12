@@ -48,7 +48,7 @@ export default function Trades() {
               <thead>
                 <tr>
                   <th>Token</th>
-                  <th>Strategy</th>
+                  <th>Route</th>
                   <th className="num">Size</th>
                   <th className="num">Exit</th>
                   <th className="num">PnL (SOL)</th>

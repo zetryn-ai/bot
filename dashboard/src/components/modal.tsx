@@ -2,6 +2,7 @@
 // Every field the API returns is rendered; nothing is summarized away.
 
 import { useEffect, useState } from "react";
+import { createPortal } from "react-dom";
 import type { AiActivityRow, OpenPosition, Trade } from "../api";
 import { PnlText, RouteBadge, ago, fmtDuration, fmtWhen, outcomeInfo } from "./bits";
 
@@ -19,7 +20,10 @@ export function Modal({
     window.addEventListener("keydown", onKey);
     return () => window.removeEventListener("keydown", onKey);
   }, [onClose]);
-  return (
+  // Portal to <body>: the cards use backdrop-filter, which makes them the
+  // containing block for position:fixed descendants — rendered in place, the
+  // overlay would be clipped inside the card instead of covering the screen.
+  return createPortal(
     <div className="modal-overlay" onMouseDown={(e) => e.target === e.currentTarget && onClose()}>
       <div className="modal" role="dialog" aria-modal="true">
         <div className="modal-head">
@@ -30,7 +34,8 @@ export function Modal({
         </div>
         <div className="modal-body">{children}</div>
       </div>
-    </div>
+    </div>,
+    document.body,
   );
 }
 
@@ -125,7 +130,7 @@ export function AiDecisionModal({ row, onClose }: { row: AiActivityRow; onClose:
           rows={[
             ["Time", fmtWhen(row.ts)],
             ["Signal source", row.source || "—"],
-            ["Strategy (route)", row.route || "—"],
+            ["Route", row.route || "—"],
             ["AI action", <span className="mono">{row.action}</span>],
             ["Confidence", <span className="mono">{row.confidence.toFixed(2)}</span>],
             ["Final score (raw)", <span className="mono">{row.final_score.toFixed(2)}</span>],
@@ -200,7 +205,7 @@ export function PositionModal({ pos, onClose }: { pos: OpenPosition; onClose: ()
             ["Entry size", <span className="mono">{pos.size_sol.toFixed(4)} SOL</span>],
             ["Tokens held (atomic)", <span className="mono">{pos.tokens_atomic.toLocaleString()}</span>],
             ["Entry confidence", <span className="mono">{pos.confidence.toFixed(2)}</span>],
-            ["Strategy (route)", pos.route || "— (pre-routing position)"],
+            ["Route", pos.route || "— (pre-routing position)"],
             ["Status", pos.status],
             ["Execution mode", pos.execution_mode],
           ]}
@@ -285,7 +290,7 @@ export function TradeModal({ trade, onClose }: { trade: Trade; onClose: () => vo
         <h3>Entry context</h3>
         <KV
           rows={[
-            ["Strategy (route)", trade.route || "— (pre-routing trade)"],
+            ["Route", trade.route || "— (pre-routing trade)"],
             ["Entry confidence", <span className="mono">{trade.confidence.toFixed(2)}</span>],
             ["Execution mode", trade.execution_mode],
           ]}

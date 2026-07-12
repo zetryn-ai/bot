@@ -136,15 +136,15 @@ export function OutcomeBadge({ outcome, detail }: { outcome: string; detail: str
 export const ROUTE_INFO: Record<string, { icon: string; explain: string }> = {
   sniper: {
     icon: "⚡",
-    explain: "Sniper strategy — fresh pump.fun launches, pure-rule decision (no LLM).",
+    explain: "Sniper route — fresh pump.fun launches, pure-rule decision (no LLM).",
   },
   graduation: {
     icon: "🎓",
-    explain: "Graduation strategy — pump.fun → Raydium migrations.",
+    explain: "Graduation route — pump.fun → Raydium migrations.",
   },
   scanner: {
     icon: "🔍",
-    explain: "Scanner strategy — generalist AI analyst for trending/boost/new-pool signals.",
+    explain: "Scanner route — generalist AI analyst for trending/boost/new-pool signals.",
   },
 };
 
@@ -152,7 +152,7 @@ export function RouteBadge({ route }: { route: string }) {
   if (!route) return <span className="muted">—</span>;
   const r = ROUTE_INFO[route];
   return (
-    <span className="badge route" title={r?.explain ?? `Entry strategy: ${route}`}>
+    <span className="badge route" title={r?.explain ?? `Route: ${route}`}>
       {r?.icon ?? "◆"} {route}
     </span>
   );

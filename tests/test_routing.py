@@ -145,7 +145,9 @@ def test_graduation_event_uses_launch_memory():
     assert event.mint == "MintG"
     assert event.bonding_curve_fill_seconds == pytest.approx(420)
     assert event.bonding_curve_sol_raised == pytest.approx(84.5)
-    assert event.pair_age_seconds == 15.0
+    # pair age is 0 at detection: the migration event fires when the DEX pool
+    # is created; candidate.age_seconds is TOKEN age and must NOT leak in.
+    assert event.pair_age_seconds == 0.0
 
 
 def test_graduation_event_unknown_launch_is_zero():

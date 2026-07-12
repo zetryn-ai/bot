@@ -13,7 +13,7 @@ function AiActivityTable({ rows }: { rows: AiActivityRow[] }) {
           <tr>
             <th>Time</th>
             <th>Token</th>
-            <th>Strategy</th>
+            <th>Route</th>
             <th>Source</th>
             <th>Action</th>
             <th className="num">Conf</th>
@@ -77,7 +77,7 @@ function PositionsTable({ positions }: { positions: OpenPosition[] }) {
         <thead>
           <tr>
             <th>Token</th>
-            <th>Strategy</th>
+            <th>Route</th>
             <th className="num">Size (SOL)</th>
             <th className="num">Conf</th>
             <th>Opened</th>

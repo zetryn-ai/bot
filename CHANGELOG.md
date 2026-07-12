@@ -5,6 +5,26 @@ All notable changes to `zetryn-bot` will be documented in this file.
 The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and
 the project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.10.2] — 2026-07-12
+
+### Fixed
+
+- **Sniper route starved / graduation flooded**: PumpPortal `create` events
+  carry a `pool` field too (verified live), so the shape-sniffing dispatcher
+  parsed EVERY new launch as a migration (age floored 24h → "detected too
+  late" reject) and the sniper route never saw a candidate. Dispatch now
+  keys on `txType` (`create`/`migrate`) with a bonding-curve-shape fallback.
+- **Graduation always rejected on pair age**: `GraduationEvent.pair_age_seconds`
+  was fed the TOKEN age (floored at 24h) instead of the pair age; the pair is
+  seconds old when the migration event fires — now 0 at detection.
+- **Detail modal clipped inside its card**: cards use `backdrop-filter`,
+  which makes them the containing block for `position: fixed` children — the
+  modal now portals to `<body>`.
+
+### Changed
+
+- UI label "Strategy" → **"Route"** everywhere (tables, modals, Analytics).
+
 ## [0.10.1] — 2026-07-12
 
 Dashboard overhaul: **ZETRYN** rebrand + Solana theme, full English UI,

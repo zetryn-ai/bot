@@ -80,13 +80,25 @@ class PumpfunStream:
 
 
 def _parse_event(data: dict) -> TokenCandidate | None:
-    """Route an incoming event to the correct parser based on payload shape."""
-    # Migration payloads carry both 'mint' and 'pool' (the new venue's pool).
-    if "pool" in data or ("mint" in data and "pool" in data):
+    """Route an incoming event to the correct parser.
+
+    Discriminator is ``txType`` (``"create"`` | ``"migrate"``), verified live
+    2026-07-12: BOTH event kinds carry a ``pool`` field (creates say
+    ``pool: "pump"``), so sniffing on ``pool`` misroutes every new launch
+    into the migration parser (which then floors age at 24h and starves the
+    sniper route).
+    """
+    tx_type = str(data.get("txType", "")).lower()
+    if tx_type == "migrate":
         return _parse_migration_event(data)
-    if "mint" in data:
+    if tx_type == "create":
         return _parse_newtoken_event(data)
-    return None
+    if "mint" not in data:
+        return None
+    # No txType (unexpected shape): bonding-curve fields mark a launch.
+    if "vSolInBondingCurve" in data or "bondingCurveKey" in data:
+        return _parse_newtoken_event(data)
+    return _parse_migration_event(data)
 
 
 def _parse_newtoken_event(data: dict) -> TokenCandidate | None:

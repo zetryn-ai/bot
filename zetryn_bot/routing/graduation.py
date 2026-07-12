@@ -40,7 +40,11 @@ def build_graduation_event(
         mint=candidate.address,
         pair_address=candidate.address,  # dedicated pair address not in the feed
         detected_at_ts=time.time(),
-        pair_age_seconds=float(candidate.age_seconds),
+        # The migration event fires the moment the DEX pool is created, so the
+        # PAIR is seconds old at detection. candidate.age_seconds is the TOKEN
+        # age (floored at 24h by the scanner — graduation takes 24-72h) and
+        # would trip max_pair_age_seconds on every single migration.
+        pair_age_seconds=0.0,
         bonding_curve_fill_seconds=launch_memory.fill_seconds(candidate.address),
         bonding_curve_unique_buyers=0,  # feed unavailable — gate relaxed in config
         bonding_curve_sol_raised=candidate.bonding_curve_sol,

@@ -15,7 +15,7 @@ export default function Analytics() {
         <EquityChart points={equity ?? []} />
       </div>
       <div className="card">
-        <h2>Win rate by strategy</h2>
+        <h2>Win rate by route</h2>
         <BarList rows={stats?.by_route ?? []} labelKey="route" />
       </div>
       <div className="card">
