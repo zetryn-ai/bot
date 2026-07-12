@@ -5,6 +5,41 @@ All notable changes to `zetryn-bot` will be documented in this file.
 The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and
 the project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.10.0] — 2026-07-12
+
+**M9 (API + Dashboard) + M10b (entry routing) land together, mid-dry-run**,
+so the 4x24h checkpoint analyses the FULL system: specialized entries, live
+AI visibility, and the multi-provider LLM chain.
+
+### Added — M10b (entry routing, ACTIVE on the VPS)
+
+- `RoutedPipeline` first-match dispatch: fresh `pumpfun_ws` launches →
+  **sniper** (rule mode, ~1ms, no LLM; buys as `action="buy"`),
+  `pumpfun_migration` → **graduation** agent with a real `GraduationEvent`
+  (`LaunchMemory` dates the curve fill from our own launch observations),
+  everything else → generalist scanner. Per-route size multipliers +
+  confidence floors on the GLOBAL RiskManager. `ROUTING_ENABLED` gate.
+
+### Added — M9 (dashboard, LIVE at the VPS behind nginx)
+
+- `ai_decisions` table + `AiActivitySink`: every decision that reached the
+  AI analyst persists with scores, full reasoning, and a "stopped where"
+  outcome (`ai_skip` / `cooldown` / `risk_rejected(<gate>)` / `opened`),
+  fed by the new `RiskManager.evaluate_ex` reject codes.
+- Read-only FastAPI (`/api/*`, Bearer `DASHBOARD_TOKEN`) + React SPA
+  (Overview with Live AI Activity, Trades, Analytics, Status) built in a
+  Docker stage; compose service `dashboard` on `127.0.0.1:8140` behind an
+  nginx vhost.
+
+### Changed
+
+- **LLM failover chain extended to 9 slots** (7 active): groq
+  llama-3.3-70b → cerebras 70b (dormant until `CEREBRAS_API_KEY`) → groq
+  llama-4-scout → groq gpt-oss-120b → sambanova 70b (dormant until
+  `SAMBANOVA_API_KEY`) → groq llama-3.1-8b → openrouter 70b:free →
+  gemini 2.5-flash → 2.5-flash-lite. Each groq model is a separate per-key
+  quota bucket.
+
 ## [0.9.1] — 2026-07-12
 
 **Dry-run hardening.** Every change here is backed by the first 10h/48-trade

@@ -1,7 +1,7 @@
 # M10b — Specialized entry routing
 
 **Date:** 2026-07-12
-**Status:** Approved
+**Status:** Shipped (v0.10.0)
 **Target version:** v0.11.0
 
 M3 wires every candidate — a 30-second-old pump.fun launch, a graduation

@@ -1,7 +1,7 @@
 # M9 — API + Dashboard (read-only)
 
 **Date:** 2026-07-12
-**Status:** Approved
+**Status:** Shipped (v0.10.0)
 **Target version:** v0.10.0
 
 The bot runs 24/7 on the VPS with real trades accumulating in Postgres, but
