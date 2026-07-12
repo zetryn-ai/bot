@@ -250,7 +250,25 @@ async def build_orchestrator(settings: Settings) -> Orchestrator:
         )
         await tracker.load_and_reconcile(wallet_pubkey, rpc)  # restore + (live) verify on-chain
 
-        sink = TeeSink([LogSink(), ExecutionSink(risk, executor, tracker, notifier=notifier)])
+        # M9: live AI-activity feed (only when persistence is up). Order
+        # matters — AiActivitySink must run BEFORE ExecutionSink so the row
+        # exists when the outcome is reported.
+        activity = None
+        if session_factory is not None:
+            from zetryn_bot.db.ai_activity_repo import AiActivityRepo
+            from zetryn_bot.pipeline.sinks import AiActivitySink
+
+            activity_repo = AiActivityRepo(session_factory)
+            pruned = await activity_repo.prune(settings.ai_activity_retention_days)
+            if pruned:
+                log.info("ai-activity: pruned {} rows past retention", pruned)
+            activity = AiActivitySink(activity_repo)
+
+        sinks: list = [LogSink()]
+        if activity is not None:
+            sinks.append(activity)
+        sinks.append(ExecutionSink(risk, executor, tracker, notifier=notifier, activity=activity))
+        sink = TeeSink(sinks)
         background_tasks.append(("execution.monitor", tracker.monitor_loop))
 
     if settings.notify_enabled:

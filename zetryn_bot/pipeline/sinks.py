@@ -87,6 +87,63 @@ class TeeSink:
                 log.exception("sink {} failed", type(sink).__name__)
 
 
+class AiActivitySink:
+    """M9: persist every decision that REACHED the AI analyst to `ai_decisions`.
+
+    Feeds the dashboard's live AI-activity table. Only decisions carrying a
+    ``FullAnalysis`` are recorded (hard-gate rejects and rule-only agents
+    never reach the LLM). The ExecutionSink, which runs AFTER this sink in
+    the TeeSink order, reports the post-verdict outcome ("stopped where")
+    via :meth:`set_outcome`. Any DB failure is logged and dropped — this
+    sink must never disturb trading (M6 fallback pattern).
+    """
+
+    _PENDING_CAP = 500  # mint -> row id map, bounded
+
+    def __init__(self, repo) -> None:
+        self._repo = repo  # AiActivityRepo (duck-typed for tests)
+        self._pending: dict[str, int] = {}
+
+    async def emit(self, candidate: TokenCandidate, decision: Decision) -> None:
+        analysis = decision.analysis
+        if analysis is None:
+            return
+        # Terminal verdicts get their outcome at insert time; buyable actions
+        # start empty and are resolved by the ExecutionSink.
+        outcome = f"ai_{decision.action}" if decision.action in ("skip", "abort") else ""
+        try:
+            row_id = await self._repo.insert(
+                mint=candidate.address,
+                symbol=candidate.symbol,
+                primary_source=candidate.sources[0] if candidate.sources else "",
+                route=str(decision.meta.get("route", "")) if decision.meta else "",
+                action=decision.action,
+                confidence=decision.confidence,
+                final_score=analysis.final_score,
+                scores={k: round(v, 4) for k, v in decision.scores.items()},
+                reasoning=analysis.reasoning or "",
+                reasons=list(decision.reasons),
+                outcome=outcome,
+            )
+        except Exception:
+            log.exception("ai-activity insert failed (trading unaffected)")
+            return
+        if not outcome:
+            if len(self._pending) >= self._PENDING_CAP:
+                self._pending.pop(next(iter(self._pending)))
+            self._pending[candidate.address] = row_id
+
+    async def set_outcome(self, mint: str, outcome: str, detail: str = "") -> None:
+        """Record how far ``mint`` got after its AI verdict. Best-effort."""
+        row_id = self._pending.pop(mint, None)
+        if row_id is None:
+            return
+        try:
+            await self._repo.set_outcome(row_id, outcome, detail)
+        except Exception:
+            log.exception("ai-activity outcome update failed (trading unaffected)")
+
+
 class ExecutionSink:
     """M4: route an ``alert`` through RiskManager → Executor → PositionTracker.
 
@@ -94,10 +151,11 @@ class ExecutionSink:
     records them). Skips a mint already held so we never stack positions.
     """
 
-    def __init__(self, risk, executor, tracker, *, notifier=None) -> None:
+    def __init__(self, risk, executor, tracker, *, notifier=None, activity=None) -> None:
         self._risk = risk
         self._executor = executor
         self._tracker = tracker
+        self._activity = activity  # AiActivitySink | None — M9 outcome reporting
         from zetryn_bot.notify.telegram import NullNotifier
 
         self._notifier = notifier or NullNotifier()
@@ -106,18 +164,32 @@ class ExecutionSink:
         # overshoot the cap (or double-buy the same mint).
         self._lock = asyncio.Lock()
 
+    async def _outcome(self, mint: str, outcome: str, detail: str = "") -> None:
+        if self._activity is not None:
+            await self._activity.set_outcome(mint, outcome, detail)
+
     async def emit(self, candidate: TokenCandidate, decision: Decision) -> None:
         async with self._lock:
             if self._tracker.holds(candidate.address):
+                await self._outcome(candidate.address, "already_held")
                 return
             if self._tracker.in_cooldown(candidate.address):
-                return  # churn guard: recently closed this mint, don't re-enter yet
-            req = self._risk.evaluate(candidate, decision, self._tracker.open_count())
+                # churn guard: recently closed this mint, don't re-enter yet
+                await self._outcome(candidate.address, "cooldown")
+                return
+            req, code, detail = self._risk.evaluate_ex(
+                candidate, decision, self._tracker.open_count()
+            )
             if req is None:
+                outcome = "not_buy_action" if code == "buy_criteria" else "risk_rejected"
+                await self._outcome(candidate.address, outcome, f"{code}: {detail}")
                 return
             position = await self._executor.buy(req)
-            if position is not None:
-                await self._tracker.add(position)
-                from zetryn_bot.notify.format import format_open
+            if position is None:
+                await self._outcome(candidate.address, "buy_failed")
+                return
+            await self._tracker.add(position)
+            await self._outcome(candidate.address, "opened")
+            from zetryn_bot.notify.format import format_open
 
-                await self._notifier.notify(format_open(position))
+            await self._notifier.notify(format_open(position))
