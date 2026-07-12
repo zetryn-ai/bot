@@ -190,6 +190,12 @@ class PositionTracker:
         position.tokens_atomic -= tokens_part
         position.size_sol = max(0.0, position.size_sol - basis_part)
         rung = self._lifecycle.mark_rung(position.mint, pnl_pct, basis_part)
+        # Retarget the remainder at the next ladder rung so the dashboard bar
+        # rescales (a +46% position stuck against a "+30% TP" scale reads as
+        # a bug) — exits themselves stay governed by the framework ladder.
+        next_rung = self._lifecycle.next_rung(position.mint)
+        if next_rung is not None:
+            position.take_profit_pct = next_rung
         self._closed.append(trade)
         if self._repo is not None:
             await self._repo.save_closed_trade(trade, self._execution_mode)
@@ -207,10 +213,14 @@ class PositionTracker:
             trade.pnl_sol,
             position.tokens_atomic,
         )
+        # Plain text — TelegramNotifier sends without parse_mode, so HTML
+        # tags would print literally (user report 2026-07-12).
+        next_target = f"+{next_rung:.0%}" if next_rung is not None else "trailing stop"
         await self._notifier.notify(
-            f"💰 <b>PARTIAL TP</b> {position.symbol or position.mint[:8]} — "
-            f"rung +{rung:.0%}: sold {fraction:.0%} for {trade.pnl_sol:+.4f} SOL; "
-            f"remainder rides with trailing stop"
+            f"💰 PARTIAL TP {position.symbol or position.mint[:8]} — "
+            f"rung +{rung:.0%}: sold {fraction:.0%} for {trade.pnl_sol:+.4f} SOL\n"
+            f"Remainder rides on — next target {next_target} "
+            f"(trailing stop + breakeven guard active)"
         )
 
     async def _quote_with_status(self, mint: str, atomic: int):

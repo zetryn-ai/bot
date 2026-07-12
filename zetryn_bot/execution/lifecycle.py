@@ -123,6 +123,14 @@ class LifecycleEngine:
         )
         return rung
 
+    def next_rung(self, mint: str) -> float | None:
+        """The next un-hit ladder threshold — the remainder's display target."""
+        hit = {round(pe.sold_at_pnl_pct, 6) for pe in self._partials.get(mint, [])}
+        for threshold, _ in self._ladder:
+            if round(threshold, 6) not in hit:
+                return threshold
+        return None
+
     def restore_partials(self, mint: str, entries: list[dict]) -> None:
         """Rebuild executed rungs after a restart (from the positions row)."""
         if entries:

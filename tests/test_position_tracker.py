@@ -261,6 +261,7 @@ async def test_partial_tp_sells_half_and_keeps_riding():
     pos = tracker._open["MintA"]
     assert pos.tokens_atomic == 500_000
     assert pos.size_sol == pytest.approx(0.1)
+    assert pos.take_profit_pct == pytest.approx(1.0)  # bar retargets to next rung
     s = tracker.stats()
     assert s["closed"] == 1  # the partial slice is a realized trade
     assert s["total_pnl_sol"] == pytest.approx(0.035, rel=0.05)  # 0.135 out vs 0.1 basis
