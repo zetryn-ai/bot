@@ -201,6 +201,8 @@ async def build_orchestrator(settings: Settings) -> Orchestrator:
                 require_sources=tuple(settings.risk_require_sources),
                 blocked_buy_sources=tuple(settings.risk_blocked_buy_sources),
                 source_conf_floors=settings.parsed_source_conf_floors(),
+                route_size_multipliers=settings.parsed_route_size_multipliers(),
+                route_conf_floors=settings.parsed_route_conf_floors(),
                 take_profit_pct=settings.exit_tp_pct,
                 stop_loss_pct=settings.exit_sl_pct,
                 max_hold_s=settings.exit_max_hold_s,
@@ -264,7 +266,69 @@ async def build_orchestrator(settings: Settings) -> Orchestrator:
             )
         )
 
-    pipeline = BotPipeline(agent, enrichers=enrichers, sink=sink, config=config)
+    if settings.routing_enabled:
+        # M10b: first-match routing — fresh pumpfun launches → sniper (rule
+        # mode, no LLM), migrations → graduation agent, the rest → scanner.
+        # All routes share the enrichers and the sink, so global risk policy
+        # (breaker, max positions, cooldown, blocked sources) is unchanged.
+        from strategies.agents.graduation import build_graduation
+        from strategies.agents.sniper import build_sniper
+        from trading.schemas import GraduationConfig, SniperConfig
+
+        from zetryn_bot.routing.graduation import GraduationPipeline
+        from zetryn_bot.routing.launch_memory import LaunchMemory
+        from zetryn_bot.routing.router import Route, RoutedPipeline, primary_source
+
+        launch_memory = LaunchMemory()
+        max_age = settings.sniper_max_age_s
+        sniper_pipe = BotPipeline(
+            build_sniper(llm_client=None),  # rule mode: no LLM in the hot loop
+            enrichers=enrichers,
+            sink=sink,
+            config=SniperConfig(),
+            route_label="sniper",
+        )
+        graduation_pipe = GraduationPipeline(
+            build_graduation(llm_client=llm, decision_log=decision_log),
+            enrichers=enrichers,
+            sink=sink,
+            # Relaxed gates for fields our feeds don't carry yet (unique
+            # buyers, LP-burn state, initial SOL liquidity) — see M10b design
+            # doc §3.3. Tighten via config once those feeds exist (M10c).
+            config=GraduationConfig(
+                min_unique_buyers=0,
+                require_lp_burned=False,
+                min_initial_liquidity_sol=0.0,
+                max_pair_age_seconds=3600.0,
+            ),
+            launch_memory=launch_memory,
+        )
+        scanner_pipe = BotPipeline(
+            agent, enrichers=enrichers, sink=sink, config=config, route_label="scanner"
+        )
+        pipeline = RoutedPipeline(
+            routes=[
+                Route(
+                    "sniper",
+                    lambda c: primary_source(c) == "pumpfun_ws" and c.age_seconds <= max_age,
+                    sniper_pipe,
+                ),
+                Route(
+                    "graduation",
+                    lambda c: primary_source(c) == "pumpfun_migration",
+                    graduation_pipe,
+                ),
+            ],
+            fallback=Route("scanner", lambda c: True, scanner_pipe),
+            launch_memory=launch_memory,
+        )
+        log.info(
+            "entry routing ENABLED — sniper (pumpfun_ws age<={:.0f}s, rule mode) / "
+            "graduation (pumpfun_migration) / scanner fallback",
+            max_age,
+        )
+    else:
+        pipeline = BotPipeline(agent, enrichers=enrichers, sink=sink, config=config)
     return Orchestrator(
         pipeline,
         build_enabled_scanners(settings),
