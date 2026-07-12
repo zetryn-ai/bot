@@ -1,79 +1,90 @@
 # API Key Requirements — 7×24 Operation
 
-**Living reference** (requested 2026-07-12). How many keys each provider
-needs for the bot to run uninterrupted for a week, based on **measured
-demand from VPS logs** (2026-07-12, routing enabled, dust pre-filter ON)
-and **rate limits verified against vendor docs on the date noted**. Re-verify
-limits before trusting this file after a few weeks — vendors drift (see
-CLAUDE.md "External APIs" rule).
+**Living reference.** Every number below carries its provenance:
+- **[docs 2026-07-12]** — verified against the vendor's official docs/pricing
+  page on that date.
+- **[measured 2026-07-12]** — measured on the production VPS (v0.10.3,
+  routing + dust pre-filter ON, 10-minute steady-state window + 12h DB data).
+- **[config]** — derived arithmetically from the deployed poll cadence
+  (not a guess: the bot cannot call faster than its configured interval).
 
-## Measured demand (steady state, 2026-07-12)
+No number here is an assumption. If a cell can't be verified, it says
+**not published** — treat that provider as "monitor 429s in logs".
+Re-verify [docs] rows after a few weeks — vendors drift (CLAUDE.md rule).
 
-- Pipeline throughput: ~15–25 candidates/min → **~25–35k candidates/day**
-  (pre-filter `PUMPFUN_MIN_CURVE_SOL=2.0` cuts the pump.fun firehose ~80%).
-- Every candidate that reaches the pipeline costs ≈ 1 Helius + 1 GMGN +
-  1 RugCheck call (+ Twitter when a symbol match exists, + Jupiter on demand).
-- LLM analyst calls (scanner + graduation routes only): ~1–3/min →
-  **~2–4k calls/day**.
-- Position sweeps: 1 Jupiter quote per open position per 30 s.
+## Measured demand (VPS, 2026-07-12 04:25–04:35 UTC)
+
+- **229 decisions / 10 min ≈ 23/min ≈ 33k candidates/day** — this is the
+  enrichment demand: every candidate costs ≈ 1 Helius + 1 GMGN + 1 RugCheck
+  call. Breakdown/10 min: gecko_new 96, raydium 71, dexscreener 20,
+  gecko_trending 18, pumpfun_ws 13, boost 10, migration 1.
+- Dust pre-filter effect: pumpfun_ws fell 155 → 13 per 10 min (−92%).
+- **Twitter enrich: 11 / 10 min ≈ 1.6k/day** (only when a symbol matches).
+- **LLM analyst calls: 74–137/hour ≈ 1.8–3.3k/day** (ai_decisions rows,
+  12h of DB data; sniper is rule-only and calls no LLM).
+- Jupiter: 2 quotes/min per open position (30 s sweep) + 1–2 per buy
+  attempt [config].
 
 ## Scanners
 
-| Provider | Env var | Limit (verified) | Demand | Keys for 7×24 | On VPS now |
+| Provider | Env var | Limit | Demand [config] | Keys for 7×24 | On VPS |
 |---|---|---|---|---|---|
-| DexScreener | none | 60 rpm (profiles/boosts), 300 rpm (pairs) — per IP, 2026-07-12 | 3 pollers, ≤6 req/min | **0 (keyless)** | — |
-| GeckoTerminal | none | 30 rpm per IP (2026-07-12) | 2 pollers @30/120 s ≈ 2.5 req/min | **0 (keyless)** | — |
-| Birdeye | `BIRDEYE_API_KEYS` | **30k CU/MONTH/key** (2026-07-12); trending=40 CU, new_listing=30 CU per call | @1800 s cadence: ~3.4k CU/day ≈ **101k CU/month** | **≥4 keys**; 6–7 comfortable (burst + retry headroom) | 7 ✅ |
-| PumpPortal (pump.fun WS) | `PUMPPORTAL_API_KEY` | push WS, no documented request limit | 1 socket | **1** | 1 ✅ |
-| Raydium | none | public API, no key | 1 poller | **0** | — |
-| Telegram (telethon) | `TELEGRAM_API_ID/HASH` + session | account-level flood limits | passive listener | **1 account** | 1 ✅ |
+| DexScreener | none | 60 rpm profiles/boosts, 300 rpm pairs, per IP [docs 2026-07-12] | 3 pollers @10/30/20 s = 11 req/min | **0 (keyless)** | — |
+| GeckoTerminal | none | 30 rpm per IP [docs 2026-07-12] | 2 pollers @30/120 s = 2.5 req/min | **0 (keyless)** | — |
+| Birdeye | `BIRDEYE_API_KEYS` | **30k CU/MONTH/key**; trending 40 CU, new_listing 30 CU per call [docs 2026-07-12] | @1800 s: (48×40)+(48×30) = 3 360 CU/day = **100.8k CU/month** | **≥4** (4×30k=120k); 7 = 210k, margin 2× | 7 ✅ |
+| PumpPortal WS | `PUMPPORTAL_API_KEY` | push WS; request limit **not published** | 1 socket | **1** | 1 ✅ |
+| Raydium | none | public, limit **not published** | 1 poller @15 s = 4 req/min | **0** | — |
+| Telegram | `TELEGRAM_API_ID/HASH` + session | account flood limits (Telegram-internal) | passive listener | **1 account** | 1 ✅ |
 
 ## Enrichers
 
-| Provider | Env var | Limit (verified) | Demand | Keys for 7×24 | On VPS now |
+| Provider | Env var | Limit | Demand [measured] | Keys for 7×24 | On VPS |
 |---|---|---|---|---|---|
-| Helius | `HELIUS_API_KEYS` | Free: **1M credits/mo, 10 RPS RPC, 2 RPS Enhanced/DAS** (2026-07-12) | ~30k calls/day ≈ 900k+/mo, bursts >2 RPS | **≥2, rekomendasi 3** (the 2 RPS Enhanced cap is the real constraint, not credits) | 4 ✅ |
-| RugCheck | none (public) | rate-limited, number **not published** (2026-07-12; unlimited via 1k $FLUXB per vendor X post) | ~20k/day | **0 keys**, but coverage is the risk, not quota — fails open; buys stay gated by `RISK_REQUIRE_SOURCES` (scanner/graduation) | — |
-| GMGN OpenAPI | key-pair signing | limits not published (2026-07-12) | ~30k/day | **1 pair**, monitor 429s in logs | 1 ✅ |
-| Jupiter (quotes) | none (lite tier) | **60 rpm per IP** (2026-07-12) | sweeps: 2/min per open position (max 5 pos = 10/min) + buys | **0 (keyless)**; paid tier only if live scaling needs it | — |
-| Twitter/X | cookie session | account-level | ~50–100 lookups/day | **1 account** (2 if suspended-account risk matters) | 1 ✅ |
+| Helius | `HELIUS_API_KEYS` | Free: **1M credits/mo, 10 RPS RPC, 2 RPS Enhanced/DAS** per account [docs 2026-07-12] | 33k calls/day ≈ **990k/mo** — right at one key's monthly ceiling; 4 workers can burst to 4 concurrent calls > 2 RPS | **≥2 dari akun terpisah** (credits), **3–4** to clear the 2 RPS cap | 4 ✅ |
+| RugCheck | none (public) | rate-limited; number **not published** [docs checked 2026-07-12 — swagger has no figure] | 33k calls/day attempted; coverage observed 29–43% on fresh mints (indexing lag, not quota) | **0 keys** — fails open; buys gated by `RISK_REQUIRE_SOURCES` (scanner/graduation) | — |
+| GMGN OpenAPI | key pair | **not published** | 33k calls/day | **1 pair**; monitor 429 in logs | 1 ✅ |
+| Jupiter quotes | none (lite) | **60 rpm per IP** [docs 2026-07-12] | max-positions 5 × 2/min = 10/min + buys | **0 (keyless)** | — |
+| Twitter/X | cookie session | account-internal | 1.6k lookups/day | **1 account** | 1 ✅ |
 
-## LLM (failover chain, framework `LLMRouter`)
+## LLM (failover chain — framework `LLMRouter`)
 
-Per-key-per-model buckets; the chain fails over model→provider, so capacity
-adds up across all 9 entries. Groq numbers from the framework limits table
-(verified 2026-07-12); OpenRouter verified 2026-07-12.
+Demand: **1.8–3.3k calls/day [measured]**. Capacity below is per
+ACCOUNT/ORG/PROJECT — **multiple keys from the SAME account do NOT multiply
+quota** (Groq: org-level; Gemini: per project; OpenRouter: per account —
+all [docs 2026-07-12]). Our pools assume keys from separate accounts.
 
-| Provider | Env var | Free limit/key (verified) | Chain entries | Keys for 7×24 @4k calls/day | On VPS now |
-|---|---|---|---|---|---|
-| Groq | `GROQ_API_KEY` (CSV) | per-model RPD buckets: 70b ≈1k RPD, scout 30k TPM, gpt-oss-120b, 8b ≈14.4k RPD | 4 buckets | **≥5**; 17 = very comfortable | 17 ✅ |
-| Cerebras | `CEREBRAS_API_KEY` | daily token quota per key (gpt-oss-120b) | 1 | 2 OK | 2 ✅ |
-| SambaNova | `SAMBANOVA_API_KEY` | RPM-capped free tier | 1 | 1–2 | 1 ✅ |
-| OpenRouter | `OPENROUTER_API_KEY` | **:free models: 20 RPM; 50 req/DAY** (1k/day only after $10 lifetime top-up) (2026-07-12) | 1 | 5 keys = 250 req/day — backup slot only, jangan andalkan | 5 ✅ |
-| Gemini | `GEMINI_API_KEY` | small free RPD (flash/flash-lite) | 2 | last-resort slots; 5 OK | 5 ✅ |
+| Provider | Free limit | Chain entries | Capacity check vs 3.3k/day | On VPS |
+|---|---|---|---|---|
+| Groq | llama-3.3-70b: 30 RPM / 1k RPD / 12k TPM / 100k TPD; gpt-oss-120b: 30 RPM / 1k RPD / 8k TPM / 200k TPD; llama-3.1-8b: **14.4k RPD**; scout: 30k TPM — per org [docs 2026-07-12] | 4 buckets | 17 akun × (1k+1k+14.4k) RPD ≫ demand — primary bucket alone (17k RPD) covers 5× | 17 keys ✅ |
+| Cerebras | gpt-oss-120b: **5 RPM, 30k TPM, 1M tokens/DAY** [docs 2026-07-12] | 1 | ~2M tokens/day (2 akun) ≈ 2–3k calls — full-day backup for the whole demand | 2 ✅ |
+| SambaNova | Llama-3.3-70B: **10–30 RPM** free tier [docs 2026-07-12; exact RPD not published] | 1 | burst absorber, bukan volume | 1 ✅ |
+| OpenRouter | :free — **20 RPM, 50 req/DAY**/account (1k/day hanya setelah top-up $10 lifetime) [docs 2026-07-12] | 1 | 5 akun × 50 = **250 req/day** — emergency slot ONLY | 5 ✅ |
+| Gemini | 2.5-flash: **10 RPM / 250 RPD**; flash-lite: **15 RPM / 1k RPD** — per project [docs 2026-07-12] | 2 | 5 proyek × 1 250 = 6.2k RPD — last resort covers a full day | 5 ✅ |
 
-**Bottom line (LLM)**: current pool ≈ 10–20× the measured 4k calls/day —
-no additional keys needed for 7×24 paper. Re-check before live if the
-candidate volume is deliberately raised.
+**Verdict LLM [measured vs docs]**: primary groq bucket alone carries ~5×
+today's demand; the whole chain carries >20×. No new keys needed for 7×24
+paper at current volume. Re-run this math if candidate volume is scaled up
+for live (the demand line above is the input).
 
 ## Ranked shopping list if anything runs dry
 
-1. **Birdeye** — the only provider we have actually exhausted (CU is
-   monthly; a dead key stays dead until the month resets). Cheapest fix:
-   more free keys.
-2. **Helius** — 2 RPS Enhanced/DAS per key is the tightest per-second cap
-   in the enrichment path; a third key removes it as a bottleneck.
-3. **Groq** — nothing needed now; add keys before intentionally scaling
-   candidate volume for live.
+1. **Birdeye** — the only provider actually exhausted so far (CU is
+   monthly: a dead key stays dead until month reset). More free keys =
+   cheapest capacity.
+2. **Helius** — 33k calls/day ≈ one key's full 1M/mo; keys #2–4 exist for
+   the 2 RPS Enhanced cap and month-end headroom. Add a 5th only if
+   candidate volume grows.
+3. **Groq** — nothing needed now; add ACCOUNTS (not same-org keys) before
+   deliberately scaling volume for live.
 
 ## Operational notes
 
-- Key pools rotate automatically (`utils/key_pool.py` for scanners/enrichers,
-  framework `KeyPool` for LLM); a 429 cools one key, the pool moves on —
-  adding keys to the CSV env vars is the whole procedure (restart required).
-- Enrichers **fail open** (candidate flows on without that data);
-  `RISK_REQUIRE_SOURCES=rugcheck` is the buy-side backstop on scanner/
-  graduation routes; the sniper route is exempt (its agent gates safety).
-- Watch for: `rate limited — cooldown` (key pool), `compute units exhausted`
-  (Birdeye), `LLM unavailable` (chain exhausted — should never happen with
-  the current pool).
+- Key pools rotate automatically (`utils/key_pool.py` bot-side, framework
+  `KeyPool` for LLM); a 429 cools one key, the pool moves on. Adding keys =
+  append to the CSV env var + restart.
+- Enrichers **fail open**; `RISK_REQUIRE_SOURCES=rugcheck` is the buy-side
+  backstop on scanner/graduation; sniper is exempt
+  (`RISK_REQUIRE_SOURCES_EXEMPT_ROUTES`).
+- Alarm lines to watch: `rate limited — cooldown` (pool rotating),
+  `compute units exhausted` (Birdeye monthly), `LLM unavailable`
+  (chain exhausted — with the pool above this should never appear).
