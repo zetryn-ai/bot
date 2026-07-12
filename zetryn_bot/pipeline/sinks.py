@@ -88,40 +88,53 @@ class TeeSink:
 
 
 class AiActivitySink:
-    """M9: persist every decision that REACHED the AI analyst to `ai_decisions`.
+    """M9: persist decisions to `ai_decisions` for the dashboard live feed.
 
-    Feeds the dashboard's live AI-activity table. Only decisions carrying a
-    ``FullAnalysis`` are recorded (hard-gate rejects and rule-only agents
-    never reach the LLM). The ExecutionSink, which runs AFTER this sink in
-    the TeeSink order, reports the post-verdict outcome ("stopped where")
-    via :meth:`set_outcome`. Any DB failure is logged and dropped — this
-    sink must never disturb trading (M6 fallback pattern).
+    Two kinds of rows land here:
+    - every decision carrying a ``FullAnalysis`` (reached the LLM analyst) —
+      the original M9 contract; and
+    - every decision from ``record_routes`` (sniper/graduation) even when
+      rule-only, so the specialist routes are visible in the live feed
+      (user requirement 2026-07-12). Rule rows get ``rule_skip``/
+      ``rule_abort`` outcomes and empty reasoning; their rule reasons land
+      in ``reasons``.
+
+    Scanner-route hard-gate rejects stay excluded (they are the 33k/day
+    firehose). The ExecutionSink, which runs AFTER this sink in the TeeSink
+    order, reports the post-verdict outcome ("stopped where") via
+    :meth:`set_outcome`. Any DB failure is logged and dropped — this sink
+    must never disturb trading (M6 fallback pattern).
     """
 
     _PENDING_CAP = 500  # mint -> row id map, bounded
 
-    def __init__(self, repo) -> None:
+    def __init__(self, repo, *, record_routes: tuple[str, ...] = ("sniper", "graduation")) -> None:
         self._repo = repo  # AiActivityRepo (duck-typed for tests)
         self._pending: dict[str, int] = {}
+        self._record_routes = record_routes
 
     async def emit(self, candidate: TokenCandidate, decision: Decision) -> None:
         analysis = decision.analysis
-        if analysis is None:
+        route = str(decision.meta.get("route", "")) if decision.meta else ""
+        if analysis is None and route not in self._record_routes:
             return
         # Terminal verdicts get their outcome at insert time; buyable actions
         # start empty and are resolved by the ExecutionSink.
-        outcome = f"ai_{decision.action}" if decision.action in ("skip", "abort") else ""
+        prefix = "ai" if analysis is not None else "rule"
+        outcome = f"{prefix}_{decision.action}" if decision.action in ("skip", "abort") else ""
         try:
             row_id = await self._repo.insert(
                 mint=candidate.address,
                 symbol=candidate.symbol,
                 primary_source=candidate.sources[0] if candidate.sources else "",
-                route=str(decision.meta.get("route", "")) if decision.meta else "",
+                route=route,
                 action=decision.action,
                 confidence=decision.confidence,
-                final_score=analysis.final_score,
+                # Rule rows have no analyst score; confidence is the honest
+                # stand-in (the column is non-null).
+                final_score=analysis.final_score if analysis is not None else decision.confidence,
                 scores={k: round(v, 4) for k, v in decision.scores.items()},
-                reasoning=analysis.reasoning or "",
+                reasoning=(analysis.reasoning or "") if analysis is not None else "",
                 reasons=list(decision.reasons),
                 outcome=outcome,
             )

@@ -35,7 +35,7 @@ from dataclasses import dataclass
 
 import aiohttp
 from loguru import logger
-from telethon import TelegramClient, events
+from telethon import TelegramClient, events, utils
 from telethon.errors import FloodWaitError, UserNotParticipantError
 from telethon.tl.types import Message
 
@@ -196,12 +196,21 @@ class TelegramScanner:
             await asyncio.sleep(3600)
 
     async def _resolve_channels(self, client: TelegramClient) -> dict[int, ChannelConfig]:
-        """Resolve configured channel usernames to entity IDs."""
+        """Resolve configured channel usernames to MARKED peer IDs.
+
+        Keys must be ``utils.get_peer_id(entity)`` (``-100<id>`` for
+        channels), because that is what ``event.chat_id`` carries at dispatch
+        time. Keying by the bare ``entity.id`` silently drops every message:
+        the handler's ``channel_map.get(event.chat_id)`` never matches, and
+        the bare int in the ``chats=`` filter doesn't resolve to a channel
+        either — observed as 9 channels "joined" but 0 candidates in 7h
+        (2026-07-12).
+        """
         channel_map: dict[int, ChannelConfig] = {}
         for ch in self._channels:
             try:
                 entity = await client.get_entity(ch.username)
-                channel_map[entity.id] = ch
+                channel_map[utils.get_peer_id(entity)] = ch
                 self._log.info(f"  joined: {ch.display_name} ({ch.username}) [{ch.category}]")
             except UserNotParticipantError:
                 self._log.warning(

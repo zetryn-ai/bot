@@ -15,6 +15,7 @@ from __future__ import annotations
 
 import asyncio
 import json
+import time
 
 import aiohttp
 from loguru import logger
@@ -62,6 +63,13 @@ class RugcheckEnricher:
         """
         self._redis = redis
         self._log = logger.bind(component=self.name)
+        # In-process fallback cache (mint -> (monotonic_ts, parsed data)).
+        # Production runs WITHOUT Redis, and trending sources re-emit the same
+        # mints every few minutes — each re-analysis was a fresh call against
+        # RugCheck's ~30 RPM public limit, so coverage flapped and the
+        # fail-closed buy gate randomly blocked known-good tokens (observed
+        # 2026-07-12: POINTLESS conf 0.76 blocked repeatedly; it did +1194%).
+        self._local_cache: dict[str, tuple[float, dict]] = {}
 
     async def enrich(
         self,
@@ -104,8 +112,12 @@ class RugcheckEnricher:
         session: aiohttp.ClientSession,
         mint: str,
     ) -> dict | None:
-        """Fetch parsed RugCheck data, with Redis cache check first."""
+        """Fetch parsed RugCheck data, with local + Redis cache checks first."""
         cache_key = f"rugcheck:{mint}"
+
+        local = self._local_cache.get(mint)
+        if local is not None and time.monotonic() - local[0] < _CACHE_TTL:
+            return local[1]
 
         if self._redis is not None:
             try:
@@ -153,6 +165,9 @@ class RugcheckEnricher:
             return None
 
         # Cache successful parses only.
+        if len(self._local_cache) > 4096:  # bounded: drop oldest insertion
+            self._local_cache.pop(next(iter(self._local_cache)))
+        self._local_cache[mint] = (time.monotonic(), result)
         if self._redis is not None:
             try:
                 await self._redis.setex(cache_key, _CACHE_TTL, json.dumps(result))

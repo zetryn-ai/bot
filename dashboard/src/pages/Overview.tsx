@@ -55,6 +55,8 @@ function AiActivityTable({ rows }: { rows: AiActivityRow[] }) {
               <td>
                 {r.reasoning ? (
                   <span className="reason-preview">{r.reasoning}</span>
+                ) : r.reasons?.length ? (
+                  <span className="reason-preview">{r.reasons.join(" · ")}</span>
                 ) : (
                   <span className="muted">—</span>
                 )}

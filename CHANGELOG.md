@@ -5,6 +5,31 @@ All notable changes to `zetryn-bot` will be documented in this file.
 The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and
 the project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.10.4] — 2026-07-12
+
+Audit follow-ups: specialist routes visible in the live feed + two silent
+signal-loss bugs fixed.
+
+### Added
+
+- Live AI Activity now also records **rule-mode sniper/graduation
+  decisions** (`rule_skip`/`rule_abort` outcomes, rule reasons shown) — the
+  feed previously showed the LLM-only scanner route exclusively, hiding the
+  sniper entirely (user report). Buy attempts show their execution outcome
+  (e.g. `buy failed: no quote`).
+
+### Fixed
+
+- **Telegram scanner emitted 0 candidates** despite 9 joined channels:
+  handler keyed channels by bare `entity.id` while `event.chat_id` carries
+  the marked `-100…` peer id — every message was silently dropped. Now keyed
+  by `utils.get_peer_id`.
+- **RugCheck coverage flapping** (29–43%): trending sources re-emit the same
+  mints every few minutes and each re-analysis was a fresh call against the
+  ~30 RPM public limit; repeated buys of known-good tokens were then blocked
+  fail-closed (observed: POINTLESS conf 0.76 blocked, did +1194%). Added a
+  bounded in-process 1h cache (production runs without Redis).
+
 ## [0.10.3] — 2026-07-12
 
 Follow-ups from the full-system log audit (user decisions A–D).

@@ -82,3 +82,35 @@ async def test_db_failure_never_raises():
     sink = AiActivitySink(repo)
     await sink.emit(_cand(), Decision(action="watch", confidence=0.65, analysis=_analysis()))
     await sink.set_outcome("MintA", "opened")  # nothing pending; still no raise
+
+
+@pytest.mark.asyncio
+async def test_rule_route_decisions_are_recorded():
+    # Sniper/graduation are rule-mode (analysis=None) but must still appear
+    # in the live feed (user requirement 2026-07-12).
+    repo = _FakeRepo()
+    sink = AiActivitySink(repo)
+    d = Decision(action="skip", confidence=0.0, reasons=["liquidity $38 too low"])
+    d.meta["route"] = "sniper"
+    await sink.emit(_cand(), d)
+    assert len(repo.rows) == 1
+    assert repo.rows[0]["route"] == "sniper"
+    assert repo.rows[0]["outcome"] == "rule_skip"
+    assert repo.rows[0]["reasoning"] == ""
+
+    buy = Decision(action="buy", confidence=0.6, reasons=["pure-rule entry"])
+    buy.meta["route"] = "sniper"
+    await sink.emit(_cand("MintB"), buy)
+    assert repo.rows[1]["outcome"] == ""  # resolved later by ExecutionSink
+    await sink.set_outcome("MintB", "buy_failed")
+    assert repo.outcomes[2][0] == "buy_failed"
+
+
+@pytest.mark.asyncio
+async def test_scanner_rule_reject_still_excluded():
+    repo = _FakeRepo()
+    sink = AiActivitySink(repo)
+    d = Decision(action="skip", confidence=0.0, reasons=["hard gate"])
+    d.meta["route"] = "scanner"
+    await sink.emit(_cand(), d)
+    assert repo.rows == []

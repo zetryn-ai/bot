@@ -74,6 +74,19 @@ export const OUTCOME_INFO: Record<
     cls: "bad",
     explain: "The AI analysis errored or was aborted — treated as a conservative skip.",
   },
+  rule_skip: {
+    icon: "—",
+    label: "rule skip",
+    cls: "",
+    explain:
+      "The route's rule agent (no LLM) rejected this token — see the reasons for which rule fired.",
+  },
+  rule_abort: {
+    icon: "✕",
+    label: "rule abort",
+    cls: "bad",
+    explain: "The route's rule agent aborted on a hard safety signal (e.g. rug risk).",
+  },
   not_buy_action: {
     icon: "◌",
     label: "watch only",
