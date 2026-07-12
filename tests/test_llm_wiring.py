@@ -20,13 +20,19 @@ def test_returns_none_when_no_provider_key_set(monkeypatch):
     assert try_build_llm_client() is None
 
 
+def _chain_entries_for(*providers: str) -> int:
+    return sum(1 for e in _CHAIN if e[1] in providers)
+
+
 def test_single_provider_returns_router_over_its_models(monkeypatch):
     _clear_llm_env(monkeypatch)
     monkeypatch.setenv("GROQ_API_KEY", "k1,k2,k3")
     client = try_build_llm_client()
-    # Groq appears twice in the chain (two model buckets) -> router.
+    # Groq appears several times in the chain (one entry per model quota
+    # bucket) -> router; primary must stay the 70b quality model.
     assert isinstance(client, LLMRouter)
-    assert [e.name for e in client.entries] == ["groq/llama-3.3-70b", "groq/llama-3.1-8b"]
+    assert len(client.entries) == _chain_entries_for("groq")
+    assert client.entries[0].name == "groq/llama-3.3-70b"
 
 
 def test_all_providers_build_full_chain(monkeypatch):
@@ -36,7 +42,9 @@ def test_all_providers_build_full_chain(monkeypatch):
     monkeypatch.setenv("GEMINI_API_KEY", "m1")
     client = try_build_llm_client()
     assert isinstance(client, LLMRouter)
-    assert len(client.entries) == 4  # groq x2 models + openrouter + gemini
+    assert len(client.entries) == _chain_entries_for("groq", "openrouter", "gemini")
+    # cerebras/sambanova entries stay dormant without their keys
+    assert not any("cerebras" in e.name or "sambanova" in e.name for e in client.entries)
 
 
 def test_pool_limit_scales_with_key_count(monkeypatch):

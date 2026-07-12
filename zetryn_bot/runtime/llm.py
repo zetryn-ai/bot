@@ -6,13 +6,17 @@ which providers have keys in the environment and declares the failover order;
 the framework does the rest.
 
 Failover chain (first configured entry wins per call; on rate-limit /
-exhaustion the router moves down):
+exhaustion the router moves down). Each groq model is a SEPARATE per-key
+quota bucket, so one set of keys carries several entries:
 
-    1. groq / llama-3.3-70b-versatile   (primary — best quality on Groq free)
-    2. groq / llama-3.1-8b-instant      (same keys, different model bucket:
-                                         separate RPM/TPM/RPD quota per key)
-    3. openrouter / llama-3.3-70b:free  (different provider, same model family)
-    4. gemini / gemini-2.5-flash        (last resort — free RPD is tiny)
+    1. groq / llama-3.3-70b-versatile     (primary quality)
+    2. cerebras / llama-3.3-70b           (needs CEREBRAS_API_KEY — 2.6k tok/s)
+    3. groq / llama-4-scout-17b           (30k TPM/key — biggest headroom)
+    4. groq / gpt-oss-120b
+    5. sambanova / llama-3.3-70b          (needs SAMBANOVA_API_KEY)
+    6. groq / llama-3.1-8b-instant        (volume: 14.4k RPD/key)
+    7. openrouter / llama-3.3-70b:free
+    8. gemini / 2.5-flash, 9. 2.5-flash-lite (last resort — tiny free RPD)
 
 Rationale (2026-07-11 dry run): a single groq client with 3 retry attempts
 produced bursts of "LLM unavailable (LLMError)" conservative skips whenever a
@@ -28,10 +32,12 @@ import os
 from loguru import logger
 from zetryn.auth.subscription import RateLimit
 from zetryn.llm import (
+    CEREBRAS_BASE_URL,
     GEMINI_BASE_URL,
     GROQ_BASE_URL,
     OPENROUTER_BASE_URL,
     PROVIDER_FREE_TIER_LIMITS,
+    SAMBANOVA_BASE_URL,
     LLMClient,
     LLMRouter,
     OpenAICompatibleClient,
@@ -42,6 +48,10 @@ from zetryn.llm import (
 log = logger.bind(component="runtime.llm")
 
 # (entry name, provider, base_url, model, env vars with the CSV keys)
+# Ordered by quality-then-volume; entries whose env vars are unset are skipped,
+# so adding a provider is just adding its key to .env (e.g. CEREBRAS_API_KEY /
+# SAMBANOVA_API_KEY slots activate on the next restart, no code change).
+# All groq model ids verified live 2026-07-12 (17 models on /v1/models).
 _CHAIN: list[tuple[str, str, str, str, list[str]]] = [
     (
         "groq/llama-3.3-70b",
@@ -51,6 +61,37 @@ _CHAIN: list[tuple[str, str, str, str, list[str]]] = [
         ["GROQ_API_KEY", "GROQ_API_KEYS"],
     ),
     (
+        # ~2,600 tok/s; llama-3.3-70b quality at a different provider's quota.
+        "cerebras/llama-3.3-70b",
+        "cerebras",
+        CEREBRAS_BASE_URL,
+        "llama-3.3-70b",
+        ["CEREBRAS_API_KEY", "CEREBRAS_API_KEYS"],
+    ),
+    (
+        # Separate per-key quota bucket with the biggest TPM on groq free (30k).
+        "groq/llama-4-scout-17b",
+        "groq",
+        GROQ_BASE_URL,
+        "meta-llama/llama-4-scout-17b-16e-instruct",
+        ["GROQ_API_KEY", "GROQ_API_KEYS"],
+    ),
+    (
+        "groq/gpt-oss-120b",
+        "groq",
+        GROQ_BASE_URL,
+        "openai/gpt-oss-120b",
+        ["GROQ_API_KEY", "GROQ_API_KEYS"],
+    ),
+    (
+        "sambanova/llama-3.3-70b",
+        "sambanova",
+        SAMBANOVA_BASE_URL,
+        "Meta-Llama-3.3-70B-Instruct",
+        ["SAMBANOVA_API_KEY", "SAMBANOVA_API_KEYS"],
+    ),
+    (
+        # Volume workhorse: 14.4k RPD/key.
         "groq/llama-3.1-8b",
         "groq",
         GROQ_BASE_URL,
@@ -69,6 +110,13 @@ _CHAIN: list[tuple[str, str, str, str, list[str]]] = [
         "gemini",
         GEMINI_BASE_URL,
         "gemini-2.5-flash",
+        ["GEMINI_API_KEY", "GOOGLE_API_KEY"],
+    ),
+    (
+        "gemini/2.5-flash-lite",
+        "gemini",
+        GEMINI_BASE_URL,
+        "gemini-2.5-flash-lite",
         ["GEMINI_API_KEY", "GOOGLE_API_KEY"],
     ),
 ]
