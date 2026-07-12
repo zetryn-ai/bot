@@ -61,11 +61,13 @@ def to_token_input(candidate: TokenCandidate) -> TokenInput:
             mcap=candidate.market_cap_usd,
             liquidity_usd=candidate.liquidity_usd,
             volume_1h=candidate.volume_1h_usd,
+            volume_24h=candidate.volume_24h_usd,
             price=candidate.price_usd or None,
             price_change_5m_pct=candidate.price_change_5m_pct,
             price_change_1h_pct=candidate.price_change_1h_pct,
             price_change_6h_pct=candidate.price_change_6h_pct,
             age_seconds=float(candidate.age_seconds),
+            txns_1h=candidate.txns_1h,
         ),
         activity=ActivityData(
             volume_1m_usd=candidate.volume_1m_usd,

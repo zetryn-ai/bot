@@ -170,13 +170,20 @@ def _parse_pool(pool: dict, token_map: dict, *, source: str) -> TokenCandidate |
     if created_at:
         age_seconds = int((datetime.now(tz=UTC) - created_at).total_seconds())
 
-    txns_m5 = attrs.get("transactions", {}).get("m5", {})
+    txns = attrs.get("transactions", {}) or {}
+    txns_m5 = txns.get("m5", {}) or {}
+    txns_h1 = txns.get("h1", {}) or {}
+    txns_h24 = txns.get("h24", {}) or {}
     buys_5m = int(txns_m5.get("buys", 0) or 0)
     sells_5m = int(txns_m5.get("sells", 0) or 0)
-    vol_m5 = float(attrs.get("volume_usd", {}).get("m5", 0) or 0)
+    buys_1h = int(txns_h1.get("buys", 0) or 0)
+    sells_1h = int(txns_h1.get("sells", 0) or 0)
+    buys_24h = int(txns_h24.get("buys", 0) or 0)
+    sells_24h = int(txns_h24.get("sells", 0) or 0)
+    volume = attrs.get("volume_usd", {}) or {}
     price_change = attrs.get("price_change_percentage", {}) or {}
     liquidity = float(attrs.get("reserve_in_usd") or 0)
-    mcap = float(attrs.get("fdv_usd") or attrs.get("market_cap_usd") or 0)
+    mcap = float(attrs.get("market_cap_usd") or attrs.get("fdv_usd") or 0)
     price = float(attrs.get("base_token_price_usd") or 0)
 
     return TokenCandidate(
@@ -188,14 +195,31 @@ def _parse_pool(pool: dict, token_map: dict, *, source: str) -> TokenCandidate |
         age_seconds=age_seconds,
         liquidity_usd=liquidity,
         market_cap_usd=mcap,
+        fdv_usd=float(attrs.get("fdv_usd") or 0),
         price_usd=price,
-        volume_5m_usd=vol_m5,
+        volume_5m_usd=float(volume.get("m5", 0) or 0),
+        volume_1h_usd=float(volume.get("h1", 0) or 0),
+        volume_6h_usd=float(volume.get("h6", 0) or 0),
+        volume_24h_usd=float(volume.get("h24", 0) or 0),
         price_change_5m_pct=float(price_change.get("m5", 0) or 0),
         price_change_1h_pct=float(price_change.get("h1", 0) or 0),
         price_change_6h_pct=float(price_change.get("h6", 0) or 0),
+        price_change_24h_pct=float(price_change.get("h24", 0) or 0),
         txns_5m=buys_5m + sells_5m,
         buys_5m=buys_5m,
         sells_5m=sells_5m,
+        txns_1h=buys_1h + sells_1h,
+        buys_1h=buys_1h,
+        sells_1h=sells_1h,
+        txns_24h=buys_24h + sells_24h,
+        buys_24h=buys_24h,
+        sells_24h=sells_24h,
+        # Unique traders per window — gecko ships buyers/sellers alongside
+        # buys/sells; many txns from FEW wallets = wash/bundler pattern.
+        buyers_5m=int(txns_m5.get("buyers", 0) or 0),
+        sellers_5m=int(txns_m5.get("sellers", 0) or 0),
+        buyers_1h=int(txns_h1.get("buyers", 0) or 0),
+        sellers_1h=int(txns_h1.get("sellers", 0) or 0),
     )
 
 

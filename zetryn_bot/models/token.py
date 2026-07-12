@@ -20,6 +20,7 @@ class TokenCandidate(BaseModel):
     age_seconds: int = 0
     liquidity_usd: float = 0.0
     market_cap_usd: float = 0.0
+    fdv_usd: float = 0.0  # fully-diluted valuation (dexscreener `fdv` / gecko `fdv_usd`)
     price_usd: float = 0.0
 
     # Price momentum (percent change; set by dexscreener/geckoterminal). The
@@ -29,15 +30,30 @@ class TokenCandidate(BaseModel):
     price_change_5m_pct: float = 0.0
     price_change_1h_pct: float = 0.0
     price_change_6h_pct: float = 0.0
+    price_change_24h_pct: float = 0.0
 
-    # Volume & activity
+    # Volume & activity (all timeframes the sources actually ship; 0 = unknown)
     volume_1m_usd: float = 0.0
     volume_5m_usd: float = 0.0
     volume_1h_usd: float = 0.0
+    volume_6h_usd: float = 0.0
+    volume_24h_usd: float = 0.0
     txns_1m: int = 0
     txns_5m: int = 0
+    txns_1h: int = 0
+    txns_24h: int = 0
     buys_5m: int = 0
     sells_5m: int = 0
+    buys_1h: int = 0
+    sells_1h: int = 0
+    buys_24h: int = 0
+    sells_24h: int = 0
+    # Unique traders (GeckoTerminal ships buyers/sellers per window; a burst
+    # of buys from FEW wallets is wash/bundler activity, many wallets = organic)
+    buyers_5m: int = 0
+    sellers_5m: int = 0
+    buyers_1h: int = 0
+    sellers_1h: int = 0
     trades_total: int = 0
 
     # Holder data (via Helius)

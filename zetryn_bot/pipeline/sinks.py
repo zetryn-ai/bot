@@ -122,6 +122,55 @@ class AiActivitySink:
         # start empty and are resolved by the ExecutionSink.
         prefix = "ai" if analysis is not None else "rule"
         outcome = f"{prefix}_{decision.action}" if decision.action in ("skip", "abort") else ""
+        # Token-data snapshot at decision time — exactly what the gates/AI saw
+        # (dashboard detail modal; user requirement 2026-07-12). Zeros are
+        # dropped: 0 means "source didn't provide it", not a real reading.
+        c = candidate
+        snapshot = {
+            k: v
+            for k, v in {
+                "mcap_usd": c.market_cap_usd,
+                "fdv_usd": c.fdv_usd,
+                "liquidity_usd": c.liquidity_usd,
+                "price_usd": c.price_usd,
+                "age_seconds": c.age_seconds,
+                "price_change_5m_pct": c.price_change_5m_pct,
+                "price_change_1h_pct": c.price_change_1h_pct,
+                "price_change_6h_pct": c.price_change_6h_pct,
+                "price_change_24h_pct": c.price_change_24h_pct,
+                "volume_5m_usd": c.volume_5m_usd,
+                "volume_1h_usd": c.volume_1h_usd,
+                "volume_6h_usd": c.volume_6h_usd,
+                "volume_24h_usd": c.volume_24h_usd,
+                "buys_5m": c.buys_5m,
+                "sells_5m": c.sells_5m,
+                "buys_1h": c.buys_1h,
+                "sells_1h": c.sells_1h,
+                "buys_24h": c.buys_24h,
+                "sells_24h": c.sells_24h,
+                "buyers_5m": c.buyers_5m,
+                "sellers_5m": c.sellers_5m,
+                "buyers_1h": c.buyers_1h,
+                "sellers_1h": c.sellers_1h,
+                "holder_count": c.holder_count,
+                "top10_holder_pct": c.top10_holder_pct,
+                "dev_wallet_pct": c.dev_wallet_pct,
+                "gmgn_safety_score": c.gmgn_safety_score,
+                "smart_wallet_buys": c.smart_wallet_buys,
+                "smart_wallets": c.gmgn_smart_wallets,
+                "kol_wallets": c.gmgn_kol_wallets,
+                "sniper_wallets": c.gmgn_sniper_wallets,
+                "bundler_wallets": c.gmgn_bundler_wallets,
+                "whale_wallets": c.gmgn_whale_wallets,
+                "bonding_curve_sol": c.bonding_curve_sol,
+                "bonding_curve_pct": c.bonding_curve_pct,
+                "creator_sol_buy": c.creator_sol_buy,
+                "twitter_mentions_1h": c.twitter_mentions_1h,
+                "twitter_engagement": c.twitter_engagement,
+                "boost_total_usd": c.boost_total_amount,
+            }.items()
+            if v
+        }
         try:
             row_id = await self._repo.insert(
                 mint=candidate.address,
@@ -137,6 +186,7 @@ class AiActivitySink:
                 reasoning=(analysis.reasoning or "") if analysis is not None else "",
                 reasons=list(decision.reasons),
                 outcome=outcome,
+                snapshot=snapshot,
             )
         except Exception:
             log.exception("ai-activity insert failed (trading unaffected)")

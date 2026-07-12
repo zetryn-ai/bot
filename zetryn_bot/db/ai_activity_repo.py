@@ -34,6 +34,7 @@ class AiActivityRepo:
         reasons: list,
         outcome: str = "",
         outcome_detail: str = "",
+        snapshot: dict | None = None,
     ) -> int:
         async with self._sf() as session, session.begin():
             result = await session.execute(
@@ -52,6 +53,7 @@ class AiActivityRepo:
                     reasons=reasons,
                     outcome=outcome,
                     outcome_detail=outcome_detail[:160],
+                    snapshot=snapshot or {},
                 )
                 .returning(AiDecisionModel.id)
             )

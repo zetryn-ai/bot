@@ -134,6 +134,7 @@ async def ai_activity(limit: int = Query(default=100, ge=1, le=500)) -> list[dic
             "reasons": r.reasons,
             "outcome": r.outcome,
             "outcome_detail": r.outcome_detail,
+            "snapshot": r.snapshot or {},
         }
         for r in rows
     ]

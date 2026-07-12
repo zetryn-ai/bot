@@ -73,6 +73,7 @@ export interface AiActivityRow {
   reasons: string[];
   outcome: string;
   outcome_detail: string;
+  snapshot: Record<string, number>;
 }
 
 export interface Trade {

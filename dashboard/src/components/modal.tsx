@@ -107,6 +107,79 @@ function ScoreMeters({ scores }: { scores: Record<string, number> }) {
   );
 }
 
+// Snapshot rendering: label + formatter per known key, ordered. Unknown keys
+// fall through with raw values so new bot fields appear without a UI change.
+const usd = (v: number) =>
+  v >= 1_000_000 ? `$${(v / 1_000_000).toFixed(2)}M` : v >= 1_000 ? `$${(v / 1_000).toFixed(1)}k` : `$${v.toFixed(v < 1 ? 6 : 2)}`;
+const pct = (v: number) => `${v >= 0 ? "+" : ""}${v.toFixed(1)}%`;
+const num = (v: number) => v.toLocaleString();
+const dur = (v: number) => (v < 90 ? `${Math.round(v)}s` : v < 5400 ? `${Math.round(v / 60)}m` : `${(v / 3600).toFixed(1)}h`);
+
+const SNAPSHOT_FIELDS: [string, string, (v: number) => string][] = [
+  ["mcap_usd", "Market cap", usd],
+  ["fdv_usd", "FDV", usd],
+  ["liquidity_usd", "Liquidity", usd],
+  ["price_usd", "Price", usd],
+  ["age_seconds", "Age", dur],
+  ["price_change_5m_pct", "Δ 5m", pct],
+  ["price_change_1h_pct", "Δ 1h", pct],
+  ["price_change_6h_pct", "Δ 6h", pct],
+  ["price_change_24h_pct", "Δ 24h", pct],
+  ["volume_5m_usd", "Vol 5m", usd],
+  ["volume_1h_usd", "Vol 1h", usd],
+  ["volume_6h_usd", "Vol 6h", usd],
+  ["volume_24h_usd", "Vol 24h", usd],
+  ["buys_5m", "Buys 5m", num],
+  ["sells_5m", "Sells 5m", num],
+  ["buys_1h", "Buys 1h", num],
+  ["sells_1h", "Sells 1h", num],
+  ["buys_24h", "Buys 24h", num],
+  ["sells_24h", "Sells 24h", num],
+  ["buyers_5m", "Buyers 5m", num],
+  ["sellers_5m", "Sellers 5m", num],
+  ["buyers_1h", "Buyers 1h", num],
+  ["sellers_1h", "Sellers 1h", num],
+  ["holder_count", "Holders", num],
+  ["top10_holder_pct", "Top-10 hold", (v) => `${v.toFixed(1)}%`],
+  ["dev_wallet_pct", "Dev wallet", (v) => `${v.toFixed(1)}%`],
+  ["gmgn_safety_score", "Safety score", (v) => v.toFixed(0)],
+  ["smart_wallet_buys", "Smart buys", num],
+  ["smart_wallets", "Smart wallets", num],
+  ["kol_wallets", "KOL wallets", num],
+  ["sniper_wallets", "Sniper wallets", num],
+  ["bundler_wallets", "Bundler wallets", num],
+  ["whale_wallets", "Whale wallets", num],
+  ["bonding_curve_sol", "Curve SOL", (v) => `${v.toFixed(1)} SOL`],
+  ["bonding_curve_pct", "Curve progress", (v) => `${v.toFixed(0)}%`],
+  ["creator_sol_buy", "Creator buy", (v) => `${v.toFixed(2)} SOL`],
+  ["twitter_mentions_1h", "X mentions 1h", num],
+  ["twitter_engagement", "X engagement", num],
+  ["boost_total_usd", "Boost spent", usd],
+];
+
+function SnapshotGrid({ snapshot }: { snapshot: Record<string, number> }) {
+  const known = new Set(SNAPSHOT_FIELDS.map(([k]) => k));
+  const items: [string, string][] = [];
+  for (const [key, label, fmt] of SNAPSHOT_FIELDS) {
+    if (snapshot[key] !== undefined) items.push([label, fmt(snapshot[key])]);
+  }
+  for (const [key, v] of Object.entries(snapshot)) {
+    if (!known.has(key)) items.push([key, String(v)]);
+  }
+  if (!items.length)
+    return <p className="muted">No snapshot recorded (decision predates v0.11.1).</p>;
+  return (
+    <div className="snapshot-grid">
+      {items.map(([label, value]) => (
+        <div className="snap-item" key={label}>
+          <span className="k">{label}</span>
+          <span className="v mono">{value}</span>
+        </div>
+      ))}
+    </div>
+  );
+}
+
 // ── AI decision ──────────────────────────────────────────────────────────────
 
 export function AiDecisionModal({ row, onClose }: { row: AiActivityRow; onClose: () => void }) {
@@ -151,6 +224,11 @@ export function AiDecisionModal({ row, onClose }: { row: AiActivityRow; onClose:
             </div>
           )}
         </div>
+      </div>
+
+      <div className="modal-section">
+        <h3>Token data at decision time</h3>
+        <SnapshotGrid snapshot={row.snapshot ?? {}} />
       </div>
 
       <div className="modal-section">

@@ -176,9 +176,8 @@ async def build_orchestrator(settings: Settings) -> Orchestrator:
     if settings.execution_enabled:
         from zetryn_bot.execution.jupiter import JupiterQuote
         from zetryn_bot.execution.position import PositionTracker
-        from zetryn_bot.execution.risk import RiskConfig, RiskManager
-
         from zetryn_bot.execution.pumpcurve import PumpCurveQuote
+        from zetryn_bot.execution.risk import RiskConfig, RiskManager
 
         jupiter = JupiterQuote()
         # Curve-phase pricing for fresh pump.fun tokens Jupiter can't route

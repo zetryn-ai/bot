@@ -277,6 +277,12 @@ td.num, th.num { text-align: right; font-variant-numeric: tabular-nums; }
 .meter-row .fill { height: 100%; border-radius: 4px; background: var(--gradient-hero); }
 .meter-row .val { text-align: right; font-variant-numeric: tabular-nums; color: var(--text-secondary); }
 
+/* snapshot grid (token data at decision time) */
+.snapshot-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(140px, 1fr)); gap: 6px 14px; }
+.snap-item { display: flex; flex-direction: column; padding: 6px 8px; border: 1px solid var(--border-subtle); border-radius: 8px; background: rgba(255, 255, 255, 0.02); }
+.snap-item .k { font-size: 10.5px; text-transform: uppercase; letter-spacing: 0.05em; color: var(--text-muted); }
+.snap-item .v { font-size: 13px; color: var(--text-primary); }
+
 .reason-list { margin: 0; padding-left: 18px; font-size: 12.5px; color: var(--text-secondary); }
 .reason-list li { margin-bottom: 3px; overflow-wrap: anywhere; white-space: normal; }
 .callout {

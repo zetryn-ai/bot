@@ -5,6 +5,29 @@ All notable changes to `zetryn-bot` will be documented in this file.
 The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and
 the project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.11.1] — 2026-07-12
+
+Verified data-inventory expansion (user audit request: "no misleading
+assumptions" — every field below comes from payloads the bot ALREADY fetches).
+
+### Added
+
+- **New TokenCandidate indicators** parsed from existing DexScreener/Gecko
+  payloads that were previously discarded: `fdv_usd`,
+  `price_change_24h_pct`, `volume_6h/24h_usd`, `buys/sells_1h`,
+  `buys/sells_24h`, `txns_1h/24h`, and **unique traders**
+  `buyers/sellers_5m/1h` (GeckoTerminal — many txns from few wallets =
+  wash/bundler pattern). Gecko now also fills volume_1h/6h/24h (only m5
+  was parsed before).
+- Framework inputs: `MarketData.volume_24h` and `MarketData.txns_1h` slots
+  (existed since v1.x, never fed) are now populated — the AI analyst sees
+  them immediately, no framework release needed.
+- **`ai_decisions.snapshot`** (migration `e3a91b7c2d10`): full token-data
+  snapshot at decision time (mcap, FDV, liq, price, age, Δ5m/1h/6h/24h,
+  volumes, buys/sells/buyers/sellers, holders, top-10/dev %, GMGN wallet
+  intel, curve state, socials, boost) — rendered in the decision detail
+  modal as a "Token data at decision time" grid.
+
 ## [0.11.0] — 2026-07-12
 
 **M10.1 — the sniper can actually trade, and winners can run.** Curve

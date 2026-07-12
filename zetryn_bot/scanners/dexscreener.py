@@ -162,21 +162,30 @@ def enrich_from_pair(token: TokenCandidate, pair: dict) -> TokenCandidate:
     updates: dict = {
         "liquidity_usd": float(liquidity.get("usd", 0) or 0),
         "market_cap_usd": float(pair.get("marketCap", 0) or 0),
+        "fdv_usd": float(pair.get("fdv", 0) or 0),
         "price_usd": float(pair.get("priceUsd", 0) or 0),
         "volume_5m_usd": float(volume.get("m5", 0) or 0),
         "volume_1h_usd": float(volume.get("h1", 0) or 0),
-        # Momentum direction for the AI analyst (m5/h1/h6 percent change).
+        "volume_6h_usd": float(volume.get("h6", 0) or 0),
+        "volume_24h_usd": float(volume.get("h24", 0) or 0),
+        # Momentum direction for the AI analyst (m5/h1/h6/h24 percent change).
         "price_change_5m_pct": float(price_change.get("m5", 0) or 0),
         "price_change_1h_pct": float(price_change.get("h1", 0) or 0),
         "price_change_6h_pct": float(price_change.get("h6", 0) or 0),
+        "price_change_24h_pct": float(price_change.get("h24", 0) or 0),
     }
 
-    txns_5m = txns.get("m5", {}) or {}
-    buys_5m = int(txns_5m.get("buys", 0) or 0)
-    sells_5m = int(txns_5m.get("sells", 0) or 0)
-    updates["buys_5m"] = buys_5m
-    updates["sells_5m"] = sells_5m
-    updates["txns_5m"] = buys_5m + sells_5m
+    for window, buys_key, sells_key, txns_key in (
+        ("m5", "buys_5m", "sells_5m", "txns_5m"),
+        ("h1", "buys_1h", "sells_1h", "txns_1h"),
+        ("h24", "buys_24h", "sells_24h", "txns_24h"),
+    ):
+        w = txns.get(window, {}) or {}
+        buys = int(w.get("buys", 0) or 0)
+        sells = int(w.get("sells", 0) or 0)
+        updates[buys_key] = buys
+        updates[sells_key] = sells
+        updates[txns_key] = buys + sells
 
     pair_created = pair.get("pairCreatedAt")
     if pair_created:

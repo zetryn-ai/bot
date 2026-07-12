@@ -118,3 +118,6 @@ class AiDecisionModel(Base):
     reasons: Mapped[list] = mapped_column(JSONB, default=list)
     outcome: Mapped[str] = mapped_column(String(24), default="")
     outcome_detail: Mapped[str] = mapped_column(String(160), default="")
+    # Token-data snapshot at decision time (mcap/liq/vol/txns/holders/...) —
+    # exactly what the gates and the AI saw. Zero-valued fields omitted.
+    snapshot: Mapped[dict] = mapped_column(JSONB, default=dict)
