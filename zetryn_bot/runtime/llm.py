@@ -10,7 +10,7 @@ exhaustion the router moves down). Each groq model is a SEPARATE per-key
 quota bucket, so one set of keys carries several entries:
 
     1. groq / llama-3.3-70b-versatile     (primary quality)
-    2. cerebras / llama-3.3-70b           (needs CEREBRAS_API_KEY — 2.6k tok/s)
+    2. cerebras / gpt-oss-120b            (needs CEREBRAS_API_KEY — 2.6k tok/s)
     3. groq / llama-4-scout-17b           (30k TPM/key — biggest headroom)
     4. groq / gpt-oss-120b
     5. sambanova / llama-3.3-70b          (needs SAMBANOVA_API_KEY)
@@ -61,11 +61,13 @@ _CHAIN: list[tuple[str, str, str, str, list[str]]] = [
         ["GROQ_API_KEY", "GROQ_API_KEYS"],
     ),
     (
-        # ~2,600 tok/s; llama-3.3-70b quality at a different provider's quota.
-        "cerebras/llama-3.3-70b",
+        # ~2,600 tok/s on a separate provider's quota. NOTE: cerebras retired
+        # llama-3.3-70b (live check 2026-07-12: gpt-oss-120b / gemma-4-31b /
+        # zai-glm-4.7 only) — the framework's limits table is stale there.
+        "cerebras/gpt-oss-120b",
         "cerebras",
         CEREBRAS_BASE_URL,
-        "llama-3.3-70b",
+        "gpt-oss-120b",
         ["CEREBRAS_API_KEY", "CEREBRAS_API_KEYS"],
     ),
     (
