@@ -25,7 +25,8 @@ appropriately on landing.
 | **M9** | API + Dashboard (FastAPI + static SPA, read-only, live AI activity) | ✅ shipped | v0.10.0 | [2026-07-12-m9-dashboard.md](docs/plans/2026-07-12-m9-dashboard.md) |
 | **M10a** | Exit intelligence — framework lifecycle agent per position tick (`PositionContext`, trailing stop) | ✅ shipped | v0.9.0 | [2026-07-11-m10a-exit-intelligence.md](docs/plans/2026-07-11-m10a-exit-intelligence.md) |
 | **M10b** | Specialized entry routing (sniper / graduation / scanner fallback; KOL & confluence → M10c) | ✅ shipped | v0.10.0 | [2026-07-12-m10b-entry-routing.md](docs/plans/2026-07-12-m10b-entry-routing.md) |
-| **M10c** | Event-driven agents (KOL copy-trade / smart-money confluence / dip-buy / growth-detector triage) — needs the bot-side infra M10b deliberately deferred: real-time wallet event feeds (Helius webhooks / GMGN wallet streams, `KOLRegistry`, per-mint accumulation windows) and a per-token time-series store (recovery metrics, organic-growth classification) | 📅 planned | v0.12.0 | TBD |
+| **M10c** | Event-driven agents — phase 1: **KOL copy-trade** via Helius address webhooks + GMGN auto-discovered smart-money wallets (WR≥60%/30d, ≥50 trades); confluence/dip-buy/growth follow with the time-series store | 🚧 in-progress | v0.12.0 | [2026-07-12-m10c-event-driven-agents.md](docs/plans/2026-07-12-m10c-event-driven-agents.md) |
+| **M11** | Live-execution hardening (parallel with M10c): Jito bundles / priority fees, MEV protection, PumpPortal live curve trading — required before the 31 Jul go-live | 📅 planned | v0.13.0 | TBD |
 
 **On M10:** split 2026-07-11/12 into three parts. **M10a** (exit
 intelligence — shipped v0.9.0) wires the framework's PL1 lifecycle agent per
