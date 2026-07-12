@@ -63,6 +63,7 @@ Thumbs.db
 graphify-out/
 
 # scripts
-*/commit-as.shzetryn_bot/api/static/
+*/commit-as.sh
+zetryn_bot/api/static/
 dashboard/node_modules/
 dashboard/dist/
