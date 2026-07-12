@@ -5,6 +5,29 @@ All notable changes to `zetryn-bot` will be documented in this file.
 The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and
 the project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.11.2] — 2026-07-12
+
+Profit-lock exits (user spec): 3-tier ladder + dynamic SL ratchet.
+
+### Changed
+
+- **Default TP ladder is now 3 tiers** (`EXIT_TP_LADDER=0.3:0.5,0.5:0.5,1.0:1.0`
+  — fractions of the CURRENT remainder = **50% / 25% / 25% of the original**):
+  TP1 +30% secures the profit; TP2 +50% and TP3 +100% are bonus tiers.
+
+### Added
+
+- **Dynamic SL ratchet** (`EXIT_SL_RATCHET=0.3:0.05,0.5:0.30`): after each TP
+  rung the remainder's stop moves UP — +5% above entry after TP1, +30% after
+  TP2 — so a dip after TP1 closes the rest quickly as a WINNER
+  (`ratchet_stop`) instead of riding back to −15%. Stored as a negative
+  `stop_loss_pct` (stop above entry), persisted, restart-safe; fires before
+  the lifecycle agent's entry-relative hard SL.
+- UI: bar's left edge/label follows the live stop (🔒 `SL +5%` in green once
+  ratcheted), modal shows "ratcheted above entry — cannot lose", Trades
+  filter gains `partial_tp`/`ratchet_stop`; Telegram partial notif now
+  reports the new locked stop.
+
 ## [0.11.1] — 2026-07-12
 
 Verified data-inventory expansion (user audit request: "no misleading

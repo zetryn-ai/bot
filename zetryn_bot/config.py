@@ -185,13 +185,20 @@ class Settings(BaseSettings):
     lifecycle_enabled: bool = False
     exit_trailing_arm_pnl_pct: float = 0.20  # trailing arms after +20% peak
     exit_trailing_drawdown_pct: float = 0.50  # exit at 50% given back from peak
-    # TP ladder "pnl:fraction_of_current,..." — partial exits (M10.1). Default:
-    # bank 50% at +30% (the old full-TP level), let the rest ride to +100%
-    # under the trailing stop. Losers still cost the full SL, but winners can
-    # now pay for more than one loser — the 24h data (avg win +0.02 vs avg
-    # loss -0.013 = breakeven at 36% WR) showed capped winners were the bind.
+    # TP ladder "pnl:fraction_of_CURRENT,..." — partial exits (M10.1).
+    # Fractions apply to the position REMAINING at that moment, so the default
+    # sells 50% / 25% / 25% of the ORIGINAL position:
+    #   +30% sell 0.5 of current (=50% orig, TP1 secures the profit)
+    #   +50% sell 0.5 of current (=25% orig, TP2 bonus)
+    #  +100% final rung exits everything left (=25% orig, TP3 bonus)
     # Empty string = single full exit at EXIT_TP_PCT (old behaviour).
-    exit_tp_ladder: str = "0.3:0.5,1.0:1.0"
+    exit_tp_ladder: str = "0.3:0.5,0.5:0.5,1.0:1.0"
+    # Dynamic stop after each TP rung: "rung:new_stop_level,..." where the new
+    # stop is a PnL level relative to entry (positive = above entry). After
+    # TP1 (+30%) the remainder stops out at +5% instead of riding back to
+    # -15%; after TP2 (+50%) the stop locks at +30%. The trade can no longer
+    # turn a winner into a loser. Empty = static SL (old behaviour).
+    exit_sl_ratchet: str = "0.3:0.05,0.5:0.30"
 
     def parsed_tp_ladder(self) -> list[tuple[float, float]]:
         rungs: list[tuple[float, float]] = []
@@ -202,6 +209,16 @@ class Settings(BaseSettings):
             threshold, _, fraction = part.partition(":")
             rungs.append((float(threshold), float(fraction)))
         return sorted(rungs, key=lambda r: r[0])
+
+    def parsed_sl_ratchet(self) -> dict[float, float]:
+        out: dict[float, float] = {}
+        for part in self.exit_sl_ratchet.split(","):
+            part = part.strip()
+            if not part:
+                continue
+            rung, _, floor = part.partition(":")
+            out[round(float(rung), 6)] = float(floor)
+        return out
 
     # ── Wallet + live execution (M5) ─────────────────────────────────────────
     # execution_mode selects the Executor when execution_enabled=True.

@@ -42,6 +42,7 @@ class PositionTracker:
         lifecycle=None,  # LifecycleEngine | None — None keeps static TP/SL/max-hold exits
         reentry_cooldown_s: float = 0.0,  # block re-buying a mint this long after ANY close
         curve=None,  # PumpCurveQuote | None — prices curve-phase tokens Jupiter can't route
+        sl_ratchet: dict[float, float] | None = None,  # rung -> new stop level (rel. entry)
     ) -> None:
         from zetryn_bot.notify.telegram import NullNotifier
 
@@ -65,6 +66,10 @@ class PositionTracker:
         # across close reasons.
         self._reentry_cooldown_s = reentry_cooldown_s
         self._curve = curve
+        # Profit-lock: after rung X the remainder's stop moves UP (stored as a
+        # NEGATIVE position.stop_loss_pct — "stop above entry"). A winner can
+        # then no longer round-trip into a loser.
+        self._sl_ratchet = sl_ratchet or {}
         self._cooldowns: dict[str, float] = {}  # mint -> monotonic deadline
         self._route_fails: dict[str, int] = {}
         self._open: dict[str, Position] = {}
@@ -196,6 +201,12 @@ class PositionTracker:
         next_rung = self._lifecycle.next_rung(position.mint)
         if next_rung is not None:
             position.take_profit_pct = next_rung
+        # Ratchet the stop: the remainder now stops at the configured level
+        # ABOVE entry (negative stop_loss_pct = raised stop) instead of
+        # riding all the way back to the entry-relative SL.
+        new_floor = self._sl_ratchet.get(round(rung, 6))
+        if new_floor is not None and -new_floor < position.stop_loss_pct:
+            position.stop_loss_pct = -new_floor
         self._closed.append(trade)
         if self._repo is not None:
             await self._repo.save_closed_trade(trade, self._execution_mode)
@@ -216,11 +227,15 @@ class PositionTracker:
         # Plain text — TelegramNotifier sends without parse_mode, so HTML
         # tags would print literally (user report 2026-07-12).
         next_target = f"+{next_rung:.0%}" if next_rung is not None else "trailing stop"
+        stop_line = (
+            f"SL moved UP to {-position.stop_loss_pct:+.0%} — profit locked 🔒"
+            if position.stop_loss_pct < 0
+            else f"SL {-position.stop_loss_pct:+.0%}"
+        )
         await self._notifier.notify(
             f"💰 PARTIAL TP {position.symbol or position.mint[:8]} — "
             f"rung +{rung:.0%}: sold {fraction:.0%} for {trade.pnl_sol:+.4f} SOL\n"
-            f"Remainder rides on — next target {next_target} "
-            f"(trailing stop + breakeven guard active)"
+            f"Remainder rides on — next target {next_target} | {stop_line}"
         )
 
     async def _quote_with_status(self, mint: str, atomic: int):
@@ -305,6 +320,21 @@ class PositionTracker:
                 (current_sol - position.size_sol) / position.size_sol if position.size_sol else 0.0
             )
             await self._mark(mint, pnl_pct)
+
+            # Ratcheted stop (raised above entry after a TP rung) fires before
+            # the lifecycle agent — its hard SL is the entry-relative envelope
+            # and knows nothing about the profit lock.
+            if position.stop_loss_pct < 0 and pnl_pct <= -position.stop_loss_pct:
+                log.info(
+                    "ratchet stop {} — pnl {:+.1%} <= locked floor {:+.1%}",
+                    position.symbol or mint[:8],
+                    pnl_pct,
+                    -position.stop_loss_pct,
+                )
+                trade = await self._executor.sell(position, "ratchet_stop")
+                if trade is not None:
+                    await self._finalize_close(mint, position, trade)
+                continue
 
             if self._lifecycle is None:
                 reason = self._exit_reason(position, current_sol)

@@ -254,6 +254,7 @@ async def build_orchestrator(settings: Settings) -> Orchestrator:
             lifecycle=lifecycle,
             reentry_cooldown_s=settings.risk_reentry_cooldown_s,
             curve=curve,
+            sl_ratchet=settings.parsed_sl_ratchet(),
         )
         await tracker.load_and_reconcile(wallet_pubkey, rpc)  # restore + (live) verify on-chain
 

@@ -30,7 +30,7 @@ export default function Trades() {
           }}
         >
           <option value="">all exit reasons</option>
-          {["take_profit", "stop_loss", "max_hold", "trailing_stop", "dead_route", "emergency"].map(
+          {["take_profit", "partial_tp", "ratchet_stop", "stop_loss", "max_hold", "trailing_stop", "dead_route", "emergency"].map(
             (r) => (
               <option key={r} value={r}>
                 {r}

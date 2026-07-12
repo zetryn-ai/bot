@@ -309,3 +309,52 @@ async def test_curve_fallback_prices_and_exits_when_jupiter_has_no_route():
     trade = tracker._closed[0]
     assert trade.reason == "take_profit"
     assert trade.exit_sol == pytest.approx(0.27)
+
+
+@pytest.mark.asyncio
+async def test_sl_ratchet_locks_profit_after_first_rung():
+    from zetryn_bot.execution.lifecycle import LifecycleEngine
+
+    class _MutableJupiter:
+        def __init__(self) -> None:
+            self.current_sol_full = 0.27  # +35% at full size
+
+        async def quote(self, input_mint, output_mint, amount_atomic, slippage_bps=100):
+            return Quote(
+                in_amount=amount_atomic,
+                out_amount=sol_to_lamports(self.current_sol_full * amount_atomic / 1_000_000),
+                price_impact_pct=0.0,
+            )
+
+    clock = _Clock()
+    jup = _MutableJupiter()
+    risk = RiskManager(RiskConfig())
+    lifecycle = LifecycleEngine(
+        take_profit_pct=0.30,
+        stop_loss_pct=0.15,
+        max_hold_s=1800.0,
+        tp_ladder=[(0.30, 0.5), (0.50, 0.5), (1.00, 1.0)],
+    )
+    tracker = PositionTracker(
+        PaperExecutor(jup),
+        jup,
+        risk,
+        now_fn=clock,
+        lifecycle=lifecycle,
+        sl_ratchet={0.30: 0.05, 0.50: 0.30},
+    )
+    await _open(tracker, size_sol=0.2)
+
+    await tracker.check_once()  # TP1 fires at +35%
+    pos = tracker._open["MintA"]
+    assert pos.stop_loss_pct == pytest.approx(-0.05)  # stop ratcheted ABOVE entry
+    assert pos.take_profit_pct == pytest.approx(0.50)  # bar targets TP2 next
+
+    # Price falls back to +3% (below the +5% lock) -> remainder closes as a
+    # ratchet_stop WINNER instead of riding to -15%.
+    jup.current_sol_full = 0.206
+    await tracker.check_once()
+    assert tracker.open_count() == 0
+    trade = tracker._closed[-1]
+    assert trade.reason == "ratchet_stop"
+    assert trade.pnl_sol > 0

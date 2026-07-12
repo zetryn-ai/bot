@@ -76,11 +76,15 @@ function PnlBar({ pos, ladder }: { pos: OpenPosition; ladder: [number, number][]
   // red zone), the entry sits at its true position, and every TP rung gets
   // a checkpoint tick the fill has to cross. Hit rungs show ✓.
   const pnl = pos.unrealized_pnl_pct;
-  const sl = Math.max(Math.abs(pos.stop_loss_pct), 0.0001);
+  // Left edge = the CURRENT stop level. Static SL stores a positive pct
+  // (stop below entry); after a ratchet the bot stores a NEGATIVE value,
+  // meaning the stop sits ABOVE entry (profit locked).
+  const stopLevel = -pos.stop_loss_pct; // e.g. −0.15, or +0.05 after ratchet
+  const locked = stopLevel > 0;
   const rungs = ladder.length ? ladder.map(([t]) => t) : [Math.max(pos.take_profit_pct, 0.0001)];
   const finalTp = rungs[rungs.length - 1];
-  const range = sl + finalTp;
-  const frac = (v: number) => Math.min(100, Math.max(0, ((sl + v) / range) * 100));
+  const range = Math.max(finalTp - stopLevel, 0.0001);
+  const frac = (v: number) => Math.min(100, Math.max(0, ((v - stopLevel) / range) * 100));
   const entryX = frac(0);
   const stale = !pos.marked_at || Date.now() - new Date(pos.marked_at).getTime() > 120_000;
   const flat = pnl === null || stale || Math.abs(pnl) < 0.001;
@@ -90,7 +94,12 @@ function PnlBar({ pos, ladder }: { pos: OpenPosition; ladder: [number, number][]
   return (
     <div className="pnlbar-wrap">
       <div className="pnlbar-labels">
-        <span className="neg mono">−{(sl * 100).toFixed(0)}% SL</span>
+        <span
+          className={`mono ${locked ? "pos" : "neg"}`}
+          title={locked ? "Stop ratcheted above entry — this trade can no longer lose" : "Stop loss below entry"}
+        >
+          {locked ? `🔒 SL +${(stopLevel * 100).toFixed(0)}%` : `−${(-stopLevel * 100).toFixed(0)}% SL`}
+        </span>
         <span
           className={`pnlbar-value mono ${flat ? "muted" : pct > 0 ? "pos" : "neg"}`}
           title={stale ? "waiting for the next price mark" : "live unrealized PnL"}

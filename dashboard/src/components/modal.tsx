@@ -308,8 +308,17 @@ export function PositionModal({ pos, onClose }: { pos: OpenPosition; onClose: ()
         <h3>Exit plan (snapshot at entry)</h3>
         <KV
           rows={[
-            ["Take profit", <span className="mono pos">+{(pos.take_profit_pct * 100).toFixed(0)}%</span>],
-            ["Stop loss", <span className="mono neg">−{(Math.abs(pos.stop_loss_pct) * 100).toFixed(0)}%</span>],
+            ["Next TP target", <span className="mono pos">+{(pos.take_profit_pct * 100).toFixed(0)}%</span>],
+            [
+              "Stop loss",
+              pos.stop_loss_pct < 0 ? (
+                <span className="mono pos">
+                  🔒 +{(-pos.stop_loss_pct * 100).toFixed(0)}% (ratcheted above entry — cannot lose)
+                </span>
+              ) : (
+                <span className="mono neg">−{(Math.abs(pos.stop_loss_pct) * 100).toFixed(0)}%</span>
+              ),
+            ],
             ["Max hold", fmtDuration(pos.max_hold_s)],
             [
               "Time left before max hold",
