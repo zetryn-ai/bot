@@ -70,6 +70,15 @@ class PositionTracker:
         # NEGATIVE position.stop_loss_pct — "stop above entry"). A winner can
         # then no longer round-trip into a loser.
         self._sl_ratchet = sl_ratchet or {}
+        # Junk-quote guard (Jotchua incident 2026-07-13: one Jupiter quote
+        # valued 580M tokens at 84.6 SOL; 30s later the same amount quoted
+        # 0.0297 SOL — the phantom fill booked +282,015%). A quote implying
+        # >= extreme_x on a position that was NOT extreme last sweep must be
+        # CONFIRMED by the next sweep before any exit acts on it. Real
+        # moonshots persist across sweeps (bulk: 18-19x across 3 quotes/60s);
+        # junk evaporates.
+        self._extreme_x = 20.0
+        self._extreme_pending: dict[str, tuple[float, float]] = {}  # mint -> (ts, multiple)
         self._cooldowns: dict[str, float] = {}  # mint -> monotonic deadline
         self._route_fails: dict[str, int] = {}
         self._open: dict[str, Position] = {}
@@ -192,6 +201,19 @@ class PositionTracker:
         trade = await self._executor.sell(partial_pos, "partial_tp")
         if trade is None:
             return  # sell failed — rung stays un-hit, retried next sweep
+        # Fill sanity: the executor re-quotes, and THAT quote can be the junk
+        # one even when the sweep quote was sane. A fill >3x away from the
+        # sweep-implied value is discarded (rung stays un-hit, retried).
+        expected = basis_part * (1.0 + pnl_pct)
+        if expected > 0 and not (expected / 3 <= trade.exit_sol <= expected * 3):
+            log.warning(
+                "discarding suspect partial fill for {} — exit {:.4f} SOL vs sweep-implied "
+                "{:.4f} SOL (junk-quote guard)",
+                position.symbol or position.mint[:8],
+                trade.exit_sol,
+                expected,
+            )
+            return
         position.tokens_atomic -= tokens_part
         position.size_sol = max(0.0, position.size_sol - basis_part)
         rung = self._lifecycle.mark_rung(position.mint, pnl_pct, basis_part)
@@ -319,6 +341,27 @@ class PositionTracker:
             pnl_pct = (
                 (current_sol - position.size_sol) / position.size_sol if position.size_sol else 0.0
             )
+
+            # Junk-quote guard: an out-of-nowhere extreme quote must repeat on
+            # the NEXT sweep before it can move money or the mark.
+            multiple = 1.0 + pnl_pct
+            if multiple >= self._extreme_x:
+                pending = self._extreme_pending.get(mint)
+                now = self._now()
+                if pending is None or now - pending[0] > 300 or multiple < pending[1] / 2:
+                    self._extreme_pending[mint] = (now, multiple)
+                    log.warning(
+                        "extreme quote for {} ({:+.0%}) — holding fire until the next sweep "
+                        "confirms it (junk-quote guard)",
+                        position.symbol or mint[:8],
+                        pnl_pct,
+                    )
+                    continue
+                # second consecutive extreme sweep in agreement — treat as real
+                self._extreme_pending.pop(mint, None)
+            else:
+                self._extreme_pending.pop(mint, None)
+
             await self._mark(mint, pnl_pct)
 
             # Ratcheted stop (raised above entry after a TP rung) fires before
@@ -361,6 +404,15 @@ class PositionTracker:
             trade = await self._executor.sell(position, reason)
             if trade is None:
                 continue  # sell failed — keep the position open, retry next sweep
+            if current_sol > 0 and not (current_sol / 3 <= trade.exit_sol <= current_sol * 3):
+                log.warning(
+                    "discarding suspect close fill for {} — exit {:.4f} SOL vs sweep-implied "
+                    "{:.4f} SOL (junk-quote guard)",
+                    position.symbol or mint[:8],
+                    trade.exit_sol,
+                    current_sol,
+                )
+                continue
             await self._finalize_close(mint, position, trade)
 
     async def monitor_loop(self) -> None:

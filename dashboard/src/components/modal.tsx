@@ -359,8 +359,21 @@ export function PositionModal({ pos, onClose }: { pos: OpenPosition; onClose: ()
 
 // ── closed trade ─────────────────────────────────────────────────────────────
 
+const REASON_EXPLAIN: Record<string, string> = {
+  take_profit: "Final TP-ladder rung hit — this closed everything remaining.",
+  partial_tp: "This row is ONE LADDER SLICE, not the whole trade: a TP rung sold part of the position (its size/PnL are for that slice only) while the rest kept riding. Look for the sibling rows of the same token around this time for the rest of the story.",
+  ratchet_stop: "Profit-lock stop: a TP rung had already banked profit, the price then dipped to the raised stop — the remainder closed as a protected winner instead of riding back down.",
+  stop_loss: "Hard stop below entry was hit.",
+  trailing_stop: "The position ran up, then gave back the configured share of its peak — exited to keep most of the run.",
+  max_hold: "Maximum holding time expired with no TP/SL hit.",
+  dead_route: "Jupiter could not route a sell anymore (dead token) — closed at 0 for honest accounting.",
+  emergency: "Emergency exit (rug signal).",
+};
+
 export function TradeModal({ trade, onClose }: { trade: Trade; onClose: () => void }) {
   const pnlPct = trade.size_sol ? (trade.pnl_sol / trade.size_sol) * 100 : 0;
+  const entryPrice = trade.tokens_atomic ? trade.size_sol / trade.tokens_atomic : 0;
+  const exitPrice = trade.tokens_atomic ? trade.exit_sol / trade.tokens_atomic : 0;
   return (
     <Modal
       onClose={onClose}
@@ -391,9 +404,27 @@ export function TradeModal({ trade, onClose }: { trade: Trade; onClose: () => vo
             ["Entry size", <span className="mono">{trade.size_sol.toFixed(4)} SOL</span>],
             ["Exit value", <span className="mono">{trade.exit_sol.toFixed(4)} SOL</span>],
             ["Tokens (atomic)", <span className="mono">{trade.tokens_atomic.toLocaleString()}</span>],
+            [
+              "Entry price / token",
+              <span className="mono">{entryPrice.toExponential(3)} SOL</span>,
+            ],
+            [
+              "Exit price / token",
+              <span className="mono">
+                {exitPrice.toExponential(3)} SOL{" "}
+                <span className={pnlPct >= 0 ? "pos" : "neg"}>
+                  ({entryPrice > 0 ? `${(exitPrice / entryPrice).toFixed(2)}x` : "—"})
+                </span>
+              </span>,
+            ],
             ["Exit reason", <span className="mono">{trade.reason}</span>],
           ]}
         />
+        {REASON_EXPLAIN[trade.reason] && (
+          <div className="callout" style={{ marginTop: 10 }}>
+            {REASON_EXPLAIN[trade.reason]}
+          </div>
+        )}
       </div>
 
       <div className="modal-section">
@@ -416,6 +447,11 @@ export function TradeModal({ trade, onClose }: { trade: Trade; onClose: () => vo
             ["Execution mode", trade.execution_mode],
           ]}
         />
+      </div>
+
+      <div className="modal-section">
+        <h3>Token data at entry</h3>
+        <SnapshotGrid snapshot={trade.entry_snapshot ?? {}} />
       </div>
 
       <MintSection mint={trade.mint} />

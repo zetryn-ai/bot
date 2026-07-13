@@ -92,6 +92,7 @@ export interface Trade {
   held_minutes: number;
   execution_mode: string;
   route: string;
+  entry_snapshot: Record<string, number>;
 }
 
 export interface TradesPage {

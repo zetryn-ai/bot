@@ -5,6 +5,27 @@ All notable changes to `zetryn-bot` will be documented in this file.
 The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and
 the project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.11.3] — 2026-07-13
+
+### Fixed
+
+- **Junk-quote guard** (Jotchua incident: one Jupiter quote valued 580M
+  tokens at 84.6 SOL, 30s later 0.0297 SOL — a phantom +282,015% fill):
+  (1) a sweep quote implying >=20x on a position that was not extreme last
+  sweep must repeat on the NEXT sweep before any exit/mark acts on it —
+  real moonshots persist (bulk: 18-19x across 3 quotes/60s), junk
+  evaporates; (2) executor fills deviating >3x from the sweep-implied
+  value are discarded and retried.
+- Data: the fabricated Jotchua row was removed and `risk_state` for
+  2026-07-13 recomputed from real trades.
+
+### Added
+
+- Trade history detail: entry/exit **price per token** (+multiple), plain-
+  English explanation of every exit reason (incl. what a `partial_tp`
+  slice row means), and the full **"Token data at entry"** snapshot grid
+  (`/api/trades` now joins the opening decision's snapshot).
+
 ## [0.11.2] — 2026-07-12
 
 Profit-lock exits (user spec): 3-tier ladder + dynamic SL ratchet.

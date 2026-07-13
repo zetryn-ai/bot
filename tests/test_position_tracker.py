@@ -358,3 +358,58 @@ async def test_sl_ratchet_locks_profit_after_first_rung():
     trade = tracker._closed[-1]
     assert trade.reason == "ratchet_stop"
     assert trade.pnl_sol > 0
+
+
+# ── junk-quote guard (Jotchua incident 2026-07-13) ───────────────────────────
+
+
+@pytest.mark.asyncio
+async def test_extreme_quote_needs_two_sweeps_before_acting():
+    class _JunkThenSaneJupiter:
+        """First sweep quotes a phantom 2820x; later sweeps are sane."""
+
+        def __init__(self) -> None:
+            self.calls = 0
+
+        async def quote(self, input_mint, output_mint, amount_atomic, slippage_bps=100):
+            self.calls += 1
+            sol = 84.6 if self.calls == 1 else 0.21 * amount_atomic / 1_000_000
+            return Quote(in_amount=amount_atomic, out_amount=sol_to_lamports(sol), price_impact_pct=0.0)
+
+    clock = _Clock()
+    jup = _JunkThenSaneJupiter()
+    risk = RiskManager(RiskConfig())
+    tracker = PositionTracker(PaperExecutor(jup), jup, risk, now_fn=clock)
+    await _open(tracker, size_sol=0.2, tp=0.3)
+
+    await tracker.check_once()  # phantom +42000% -> held for confirmation
+    assert tracker.open_count() == 1
+    assert tracker.stats()["closed"] == 0
+
+    clock.t += 30
+    await tracker.check_once()  # sane +5% -> pending cleared, still open
+    assert tracker.open_count() == 1
+
+
+@pytest.mark.asyncio
+async def test_persistent_extreme_quote_is_accepted_second_sweep():
+    class _MoonJupiter:
+        async def quote(self, input_mint, output_mint, amount_atomic, slippage_bps=100):
+            return Quote(
+                in_amount=amount_atomic,
+                out_amount=sol_to_lamports(6.0 * amount_atomic / 1_000_000),  # 30x, persistent
+                price_impact_pct=0.0,
+            )
+
+    clock = _Clock()
+    jup = _MoonJupiter()
+    risk = RiskManager(RiskConfig())
+    tracker = PositionTracker(PaperExecutor(jup), jup, risk, now_fn=clock)
+    await _open(tracker, size_sol=0.2, tp=0.3)
+
+    await tracker.check_once()  # first extreme sweep -> pending
+    assert tracker.open_count() == 1
+    clock.t += 30
+    await tracker.check_once()  # confirmed -> static TP closes at 30x
+    assert tracker.open_count() == 0
+    assert tracker._closed[-1].pnl_sol > 5.0

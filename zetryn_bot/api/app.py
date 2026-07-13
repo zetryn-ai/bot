@@ -181,6 +181,24 @@ async def trades(
     async with session_factory() as session:
         total = (await session.execute(count_stmt)).scalar_one()
         rows = (await session.execute(stmt.limit(limit).offset(offset))).scalars().all()
+        # "What did the token look like at entry" — the snapshot of the
+        # decision that opened this trade (latest 'opened' row at/before the
+        # trade's open time). One small indexed query per row, page <= 500.
+        snapshots: dict[int, dict] = {}
+        for t in rows:
+            snap = (
+                await session.execute(
+                    select(AiDecisionModel.snapshot)
+                    .where(
+                        AiDecisionModel.mint == t.mint,
+                        AiDecisionModel.outcome == "opened",
+                        AiDecisionModel.ts <= t.opened_at + timedelta(minutes=2),
+                    )
+                    .order_by(AiDecisionModel.ts.desc())
+                    .limit(1)
+                )
+            ).scalar_one_or_none()
+            snapshots[t.id] = snap or {}
     return {
         "total": int(total),
         "trades": [
@@ -198,6 +216,7 @@ async def trades(
                 "held_minutes": (t.closed_at - t.opened_at).total_seconds() / 60,
                 "execution_mode": t.execution_mode,
                 "route": t.route,
+                "entry_snapshot": snapshots.get(t.id, {}),
             }
             for t in rows
         ],
