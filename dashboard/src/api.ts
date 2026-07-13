@@ -54,6 +54,7 @@ export interface OpenPosition {
 export interface Overview {
   open_positions: OpenPosition[];
   tp_ladder: [number, number][];
+  route_tp_ladders: Record<string, [number, number][]>;
   today_pnl_sol: number;
   circuit_breaker: { limit_sol: number; tripped: boolean };
   closed_count: number;

@@ -208,6 +208,10 @@ async def build_orchestrator(settings: Settings) -> Orchestrator:
                 source_conf_floors=settings.parsed_source_conf_floors(),
                 route_size_multipliers=settings.parsed_route_size_multipliers(),
                 route_conf_floors=settings.parsed_route_conf_floors(),
+                route_max_hold_s=settings.parsed_route_max_hold_s(),
+                route_tp_first={
+                    r: ladder[0][0] for r, ladder in settings.parsed_route_tp_ladders().items()
+                },
                 take_profit_pct=settings.exit_tp_pct,
                 stop_loss_pct=settings.exit_sl_pct,
                 max_hold_s=settings.exit_max_hold_s,
@@ -221,17 +225,32 @@ async def build_orchestrator(settings: Settings) -> Orchestrator:
 
         # M10: framework lifecycle agent replaces the static exit triple.
         lifecycle = None
+        route_lifecycles: dict = {}
         if settings.lifecycle_enabled:
             from zetryn_bot.execution.lifecycle import LifecycleEngine
 
-            lifecycle = LifecycleEngine(
-                take_profit_pct=settings.exit_tp_pct,
-                stop_loss_pct=settings.exit_sl_pct,
-                max_hold_s=settings.exit_max_hold_s,
-                trailing_arm_pnl_pct=settings.exit_trailing_arm_pnl_pct,
-                trailing_drawdown_pct=settings.exit_trailing_drawdown_pct,
-                tp_ladder=settings.parsed_tp_ladder() or None,
-            )
+            def _engine(ladder, max_hold):
+                return LifecycleEngine(
+                    take_profit_pct=settings.exit_tp_pct,
+                    stop_loss_pct=settings.exit_sl_pct,
+                    max_hold_s=max_hold,
+                    trailing_arm_pnl_pct=settings.exit_trailing_arm_pnl_pct,
+                    trailing_drawdown_pct=settings.exit_trailing_drawdown_pct,
+                    tp_ladder=ladder or None,
+                )
+
+            lifecycle = _engine(settings.parsed_tp_ladder(), settings.exit_max_hold_s)
+            # M12: routes with their own ladder and/or max-hold get their own
+            # engine — momentum takes profit quicker, launch times out sooner.
+            route_ladders = settings.parsed_route_tp_ladders()
+            route_holds = settings.parsed_route_max_hold_s()
+            route_lifecycles = {
+                r: _engine(
+                    route_ladders.get(r, settings.parsed_tp_ladder()),
+                    route_holds.get(r, settings.exit_max_hold_s),
+                )
+                for r in set(route_ladders) | set(route_holds)
+            }
             log.info(
                 "lifecycle agent ENABLED — framework rule exits "
                 "(TP +{:.0%}, SL -{:.0%}, max-hold {:.0f}s, trailing arm "
@@ -252,6 +271,7 @@ async def build_orchestrator(settings: Settings) -> Orchestrator:
             execution_mode=settings.execution_mode,
             notifier=notifier,
             lifecycle=lifecycle,
+            route_lifecycles=route_lifecycles or None,
             reentry_cooldown_s=settings.risk_reentry_cooldown_s,
             curve=curve,
             sl_ratchet=settings.parsed_sl_ratchet(),
@@ -293,17 +313,26 @@ async def build_orchestrator(settings: Settings) -> Orchestrator:
         )
 
     if settings.routing_enabled:
-        # M10b: first-match routing — fresh pumpfun launches → sniper (rule
-        # mode, no LLM), migrations → graduation agent, the rest → scanner.
+        # M12: strategy-first routing — every source maps to the strategy its
+        # signal shape belongs to (the old "scanner" catch-all is dissolved).
         # All routes share the enrichers and the sink, so global risk policy
         # (breaker, max positions, cooldown, blocked sources) is unchanged.
         from strategies.agents.graduation import build_graduation
         from strategies.agents.sniper import build_sniper
         from trading.schemas import GraduationConfig, SniperConfig
 
+        from zetryn_bot.routing.gates import (
+            LAUNCH_SOURCES,
+            MOMENTUM_SOURCES,
+            is_social_source,
+            launch_gate,
+            momentum_gate,
+            social_gate,
+        )
         from zetryn_bot.routing.graduation import GraduationPipeline
         from zetryn_bot.routing.launch_memory import LaunchMemory
         from zetryn_bot.routing.router import (
+            GatedPipeline,
             Route,
             RoutedPipeline,
             live_age_seconds,
@@ -325,7 +354,7 @@ async def build_orchestrator(settings: Settings) -> Orchestrator:
             sink=sink,
             # Relaxed gates for fields our feeds don't carry yet (unique
             # buyers, LP-burn state, initial SOL liquidity) — see M10b design
-            # doc §3.3. Tighten via config once those feeds exist (M10c).
+            # doc §3.3. Tighten via config once those feeds exist.
             config=GraduationConfig(
                 min_unique_buyers=0,
                 require_lp_burned=False,
@@ -334,8 +363,43 @@ async def build_orchestrator(settings: Settings) -> Orchestrator:
             ),
             launch_memory=launch_memory,
         )
-        scanner_pipe = BotPipeline(
-            agent, enrichers=enrichers, sink=sink, config=config, route_label="scanner"
+        # launch/momentum/social share the generalist LLM agent — what makes
+        # each a STRATEGY is its entry gate, its ScannerConfig, and its
+        # per-route sizing/exit policy (RiskConfig + route lifecycle engines).
+        launch_config = ScannerConfig(
+            min_liquidity_usd=settings.launch_gate_min_liquidity_usd,
+            min_volume_1h=0,  # a 20-minute-old pool has no 1h volume history
+            max_top10_pct=settings.gate_max_top10_pct,
+            min_holders=settings.launch_gate_min_holders,
+            max_bundler_wallets=settings.gate_max_bundler_wallets,
+            min_gmgn_safety_score=settings.gate_min_gmgn_safety_score,
+        )
+        launch_pipe = GatedPipeline(
+            BotPipeline(
+                agent, enrichers=enrichers, sink=sink, config=launch_config, route_label="launch"
+            ),
+            lambda c: launch_gate(c, max_age_s=settings.launch_max_age_s),
+            sink,
+            "launch",
+        )
+        momentum_pipe = GatedPipeline(
+            BotPipeline(
+                agent, enrichers=enrichers, sink=sink, config=config, route_label="momentum"
+            ),
+            lambda c: momentum_gate(
+                c, max_1h_pct=settings.mom_max_1h_pct, max_6h_pct=settings.mom_max_6h_pct
+            ),
+            sink,
+            "momentum",
+        )
+        social_pipe = GatedPipeline(
+            BotPipeline(agent, enrichers=enrichers, sink=sink, config=config, route_label="social"),
+            lambda c: social_gate(c, max_age_s=settings.social_max_age_s),
+            sink,
+            "social",
+        )
+        other_pipe = BotPipeline(
+            agent, enrichers=enrichers, sink=sink, config=config, route_label="other"
         )
         pipeline = RoutedPipeline(
             routes=[
@@ -351,14 +415,29 @@ async def build_orchestrator(settings: Settings) -> Orchestrator:
                     lambda c: primary_source(c) == "pumpfun_migration",
                     graduation_pipe,
                 ),
+                Route("momentum", lambda c: primary_source(c) in MOMENTUM_SOURCES, momentum_pipe),
+                Route(
+                    "launch",
+                    # stale pumpfun_ws (missed the sniper window) is still a
+                    # launch, not "other".
+                    lambda c: (
+                        primary_source(c) in LAUNCH_SOURCES or primary_source(c) == "pumpfun_ws"
+                    ),
+                    launch_pipe,
+                ),
+                Route("social", lambda c: is_social_source(primary_source(c)), social_pipe),
             ],
-            fallback=Route("scanner", lambda c: True, scanner_pipe),
+            fallback=Route("other", lambda c: True, other_pipe),
             launch_memory=launch_memory,
         )
         log.info(
-            "entry routing ENABLED — sniper (pumpfun_ws age<={:.0f}s, rule mode) / "
-            "graduation (pumpfun_migration) / scanner fallback",
+            "strategy routing ENABLED — sniper(pumpfun<={:.0f}s) / graduation / "
+            "momentum(anti-laggard 1h<={:.0f}% 6h<={:.0f}%) / launch(age<={:.0f}s) / "
+            "social / other(fallback)",
             max_age,
+            settings.mom_max_1h_pct,
+            settings.mom_max_6h_pct,
+            settings.launch_max_age_s,
         )
     else:
         pipeline = BotPipeline(agent, enrichers=enrichers, sink=sink, config=config)

@@ -40,6 +40,7 @@ class PositionTracker:
         notifier=None,
         dead_route_after: int = 10,  # consecutive no-route sweeps before a dead-route close
         lifecycle=None,  # LifecycleEngine | None — None keeps static TP/SL/max-hold exits
+        route_lifecycles=None,  # dict[route, LifecycleEngine] — M12 per-route exit profiles
         reentry_cooldown_s: float = 0.0,  # block re-buying a mint this long after ANY close
         curve=None,  # PumpCurveQuote | None — prices curve-phase tokens Jupiter can't route
         sl_ratchet: dict[float, float] | None = None,  # rung -> new stop level (rel. entry)
@@ -57,6 +58,7 @@ class PositionTracker:
         self._notifier = notifier or NullNotifier()
         self._dead_route_after = dead_route_after
         self._lifecycle = lifecycle
+        self._route_lifecycles = route_lifecycles or {}
         # Re-entry cooldown (churn guard): the 10h VPS dry run had 6 mints
         # account for 32/48 trades at net -0.076 SOL — trending scanners
         # re-emit the same token every poll, the 60s dedup expires, and the
@@ -146,11 +148,13 @@ class PositionTracker:
         )
         # Restore executed TP-ladder rungs so a restart can't refire a rung
         # that already sold (each refire would halve the position again).
-        if self._lifecycle is not None and hasattr(self._repo, "load_partials_map"):
+        if hasattr(self._repo, "load_partials_map"):
             partials_map = await self._repo.load_partials_map()
             for mint, entries in partials_map.items():
-                if mint in self._open:
-                    self._lifecycle.restore_partials(mint, entries)
+                pos = self._open.get(mint)
+                engine = self._engine(pos) if pos is not None else None
+                if engine is not None:
+                    engine.restore_partials(mint, entries)
         # Rebuild re-entry cooldowns from recent closed trades — otherwise a
         # container restart would reset every cooldown and churn could resume.
         if self._reentry_cooldown_s > 0:
@@ -159,6 +163,11 @@ class PositionTracker:
                 self._start_cooldown(mint, elapsed_s=elapsed_s)
             if recent:
                 log.info("restored {} re-entry cooldown(s) from closed trades", len(recent))
+
+    def _engine(self, position: Position):
+        """The lifecycle engine owning this position's exits (route-specific
+        profile when configured, else the default engine, else None=static)."""
+        return self._route_lifecycles.get(position.route) or self._lifecycle
 
     def _exit_reason(self, position: Position, current_sol: float) -> str | None:
         pnl_pct = (
@@ -180,7 +189,7 @@ class PositionTracker:
             except Exception:
                 log.exception("mark-to-market update failed (trading unaffected)")
 
-    async def _partial_close(self, position: Position, decision, pnl_pct: float) -> None:
+    async def _partial_close(self, position: Position, decision, pnl_pct: float, engine) -> None:
         """Sell a ladder-rung fraction, keep the remainder riding.
 
         ``decision.size`` is the SOL slice of the CURRENT basis to sell (the
@@ -216,11 +225,11 @@ class PositionTracker:
             return
         position.tokens_atomic -= tokens_part
         position.size_sol = max(0.0, position.size_sol - basis_part)
-        rung = self._lifecycle.mark_rung(position.mint, pnl_pct, basis_part)
+        rung = engine.mark_rung(position.mint, pnl_pct, basis_part)
         # Retarget the remainder at the next ladder rung so the dashboard bar
         # rescales (a +46% position stuck against a "+30% TP" scale reads as
         # a bug) — exits themselves stay governed by the framework ladder.
-        next_rung = self._lifecycle.next_rung(position.mint)
+        next_rung = engine.next_rung(position.mint)
         if next_rung is not None:
             position.take_profit_pct = next_rung
         # Ratchet the stop: the remainder now stops at the configured level
@@ -235,7 +244,7 @@ class PositionTracker:
             await self._repo.save_open(position, self._execution_mode)
             if hasattr(self._repo, "update_partials"):
                 await self._repo.update_partials(
-                    position.mint, self._lifecycle.partials_as_dicts(position.mint)
+                    position.mint, engine.partials_as_dicts(position.mint)
                 )
         await self._risk.record_close(trade.pnl_sol)
         log.info(
@@ -273,8 +282,9 @@ class PositionTracker:
         del self._open[mint]
         self._route_fails.pop(mint, None)
         self._start_cooldown(mint)
-        if self._lifecycle is not None:
-            self._lifecycle.forget(mint)
+        engine = self._engine(position)
+        if engine is not None:
+            engine.forget(mint)
         self._closed.append(trade)
         if self._repo is not None:
             await self._repo.delete_open(mint)
@@ -379,19 +389,20 @@ class PositionTracker:
                     await self._finalize_close(mint, position, trade)
                 continue
 
-            if self._lifecycle is None:
+            engine = self._engine(position)
+            if engine is None:
                 reason = self._exit_reason(position, current_sol)
             else:
-                decision = await self._lifecycle.evaluate(
+                decision = await engine.evaluate(
                     position, current_sol, self._now() - position.opened_at
                 )
                 if decision is None or decision.action == "hold":
                     continue
                 # Non-final ladder rungs sell a fraction and keep riding.
                 if decision.action in ("take_profit", "scale_out") and decision.size:
-                    await self._partial_close(position, decision, pnl_pct)
+                    await self._partial_close(position, decision, pnl_pct, engine)
                     continue
-                reason = self._lifecycle.close_reason(decision)
+                reason = engine.close_reason(decision)
                 log.info(
                     "lifecycle exit {} — action={} reason={} | {}",
                     position.symbol or mint[:8],

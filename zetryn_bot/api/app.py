@@ -118,6 +118,7 @@ async def overview() -> dict:
             for p in open_rows
         ],
         "tp_ladder": _parsed_ladder(),
+        "route_tp_ladders": {r: ladder for r, ladder in settings.parsed_route_tp_ladders().items()},
         "today_pnl_sol": today,
         "circuit_breaker": {
             "limit_sol": daily_limit,

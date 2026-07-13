@@ -24,3 +24,4 @@ For roadmap progress and milestone status, see
 | 2026-07-12 | [M10b — Specialized entry routing](2026-07-12-m10b-entry-routing.md) | Shipped (v0.10.0) |
 | 2026-07-12 | [M9 — API + Dashboard (read-only)](2026-07-12-m9-dashboard.md) | Shipped (v0.10.0) |
 | 2026-07-12 | [M10c — Event-driven entry agents (KOL copy-trade)](2026-07-12-m10c-event-driven-agents.md) | Approved |
+| 2026-07-13 | [M12 — Strategy-first routing](2026-07-13-m12-strategy-routing.md) | Shipped (v0.12.0) |

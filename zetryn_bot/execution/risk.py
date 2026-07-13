@@ -68,6 +68,11 @@ class RiskConfig:
     # confidence gate on top of the global min_confidence.
     route_size_multipliers: dict[str, float] = field(default_factory=dict)
     route_conf_floors: dict[str, float] = field(default_factory=dict)
+    # M12: per-route exit profile at ENTRY time — max-hold override and the
+    # first TP-ladder rung (drives position.take_profit_pct so the dashboard
+    # bar and the static-exit fallback agree with the route's ladder).
+    route_max_hold_s: dict[str, float] = field(default_factory=dict)
+    route_tp_first: dict[str, float] = field(default_factory=dict)
 
 
 class RiskManager:
@@ -211,9 +216,9 @@ class RiskManager:
                 mint=candidate.address,
                 symbol=candidate.symbol,
                 size_sol=size,
-                take_profit_pct=self._cfg.take_profit_pct,
+                take_profit_pct=self._cfg.route_tp_first.get(route, self._cfg.take_profit_pct),
                 stop_loss_pct=self._cfg.stop_loss_pct,
-                max_hold_s=self._cfg.max_hold_s,
+                max_hold_s=self._cfg.route_max_hold_s.get(route, self._cfg.max_hold_s),
                 confidence=decision.confidence,
                 meta=build_trade_meta(candidate, decision),
                 token_name=candidate.name,

@@ -51,6 +51,30 @@ def primary_source(candidate: TokenCandidate) -> str:
     return candidate.sources[0] if candidate.sources else ""
 
 
+class GatedPipeline:
+    """Route-specific pre-filter in front of a pipeline (M12).
+
+    A failed gate emits a synthetic rule skip to the shared sink (visible in
+    logs) WITHOUT enriching or calling the LLM — that is the point: laggards
+    and stale calls stop costing enricher/LLM budget.
+    """
+
+    def __init__(self, inner: CandidatePipeline, gate, sink, route_label: str) -> None:
+        self._inner = inner
+        self._gate = gate  # Callable[[TokenCandidate], tuple[bool, str]]
+        self._sink = sink
+        self._route_label = route_label
+
+    async def process(self, candidate: TokenCandidate, session: aiohttp.ClientSession) -> Decision:
+        ok, why = self._gate(candidate)
+        if ok:
+            return await self._inner.process(candidate, session)
+        decision = Decision(action="skip", confidence=0.0, reasons=[f"route gate: {why}"])
+        decision.meta["route"] = self._route_label
+        await self._sink.emit(candidate, decision)
+        return decision
+
+
 def live_age_seconds(candidate: TokenCandidate) -> float:
     """Candidate age computed NOW, not the snapshot stamped at parse time.
 

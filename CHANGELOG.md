@@ -5,6 +5,29 @@ All notable changes to `zetryn-bot` will be documented in this file.
 The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and
 the project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.12.0] — 2026-07-13
+
+**M12 — strategy-first routing.** The "scanner" catch-all (user finding:
+"bukan strategi, hanya scanner mentah") is dissolved: every source now maps
+to the strategy its signal shape belongs to, each with its own entry gate,
+sizing, TP ladder, and max-hold.
+
+### Added
+
+- Routes: ⚡ sniper / 🎓 graduation (unchanged) + 🚀 **launch** (young pools
+  <2h from gecko_new, dexscreener, raydium, birdeye_new; relaxed
+  holders/liquidity gate, 0.5x size, 45m max-hold) + 📈 **momentum**
+  (trending sources behind an **anti-laggard gate**: Δ5m>0, 0<Δ1h≤80%,
+  Δ6h≤150%, unique buyers>sellers, buy-ratio>0.5 — fails skip BEFORE the
+  LLM; quick ladder 0.2:0.5|0.4:1.0, 60m max-hold) + 📣 **social**
+  (telegram calls, on-chain confirmed, <6h age) + **other** (fallback,
+  conf floor 0.9 = observation-only; dexscreener_boost stays buy-blocked).
+- Per-route exit machinery: `ROUTE_TP_LADDERS`, `ROUTE_MAX_HOLD_S`
+  (per-route LifecycleEngine), `RiskConfig.route_max_hold_s`/`route_tp_first`;
+  SL ratchet map extended for the momentum rungs (0.2→+3%, 0.4→+15%).
+- Dashboard: badges for the new routes; the PnL bar picks the ladder
+  matching the position's route.
+
 ## [0.11.3] — 2026-07-13
 
 ### Fixed

@@ -70,7 +70,15 @@ function AiActivityTable({ rows }: { rows: AiActivityRow[] }) {
   );
 }
 
-function PnlBar({ pos, ladder }: { pos: OpenPosition; ladder: [number, number][] }) {
+function PnlBar({
+  pos,
+  ladder,
+  routeLadders,
+}: {
+  pos: OpenPosition;
+  ladder: [number, number][];
+  routeLadders: Record<string, [number, number][]>;
+}) {
   // ONE linear scale from −SL (left edge) to the FINAL ladder rung (right
   // edge) — the sides are proportional (−15% left vs +100% right = narrow
   // red zone), the entry sits at its true position, and every TP rung gets
@@ -81,7 +89,10 @@ function PnlBar({ pos, ladder }: { pos: OpenPosition; ladder: [number, number][]
   // meaning the stop sits ABOVE entry (profit locked).
   const stopLevel = -pos.stop_loss_pct; // e.g. −0.15, or +0.05 after ratchet
   const locked = stopLevel > 0;
-  const rungs = ladder.length ? ladder.map(([t]) => t) : [Math.max(pos.take_profit_pct, 0.0001)];
+  const routeLadder = routeLadders[pos.route] ?? ladder;
+  const rungs = routeLadder.length
+    ? routeLadder.map(([t]) => t)
+    : [Math.max(pos.take_profit_pct, 0.0001)];
   const finalTp = rungs[rungs.length - 1];
   const range = Math.max(finalTp - stopLevel, 0.0001);
   const frac = (v: number) => Math.min(100, Math.max(0, ((v - stopLevel) / range) * 100));
@@ -152,9 +163,11 @@ function PnlBar({ pos, ladder }: { pos: OpenPosition; ladder: [number, number][]
 function PositionsGrid({
   positions,
   ladder,
+  routeLadders,
 }: {
   positions: OpenPosition[];
   ladder: [number, number][];
+  routeLadders: Record<string, [number, number][]>;
 }) {
   const [selected, setSelected] = useState<OpenPosition | null>(null);
   if (!positions.length) return <p className="muted">No open positions.</p>;
@@ -173,7 +186,7 @@ function PositionsGrid({
               )}
               <span className="pos-age muted">{ago(p.opened_at)}</span>
             </div>
-            <PnlBar pos={p} ladder={ladder} />
+            <PnlBar pos={p} ladder={ladder} routeLadders={routeLadders} />
             <div className="pos-meta muted">
               <span className="mono">{p.size_sol.toFixed(4)} SOL</span>
               <span>conf <span className="mono">{p.confidence.toFixed(2)}</span></span>
@@ -226,7 +239,7 @@ export default function Overview() {
         <h2>
           Open positions <span className="hint">click a row for details</span>
         </h2>
-        <PositionsGrid positions={ov.open_positions} ladder={ov.tp_ladder ?? []} />
+        <PositionsGrid positions={ov.open_positions} ladder={ov.tp_ladder ?? []} routeLadders={ov.route_tp_ladders ?? {}} />
       </div>
 
       <div className="card">

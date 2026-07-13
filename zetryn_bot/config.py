@@ -166,9 +166,45 @@ class Settings(BaseSettings):
     # scanner. NOTE: sniper rule-mode buys carry action="buy" — include "buy"
     # in RISK_BUY_ACTIONS for the sniper route to trade.
     routing_enabled: bool = False
-    sniper_max_age_s: float = 120.0  # pumpfun_ws launches older than this fall to scanner
-    route_size_multipliers: str = "sniper:0.5,graduation:1.0,scanner:1.0"
-    route_conf_floors: str = "sniper:0.6,graduation:0.6,scanner:0.6"
+    sniper_max_age_s: float = 120.0  # pumpfun_ws launches older than this fall to launch
+    route_size_multipliers: str = "sniper:0.5,launch:0.5,graduation:1.0"
+    route_conf_floors: str = "sniper:0.6,graduation:0.6,other:0.9"
+
+    # ── M12 strategy-first routing (the "scanner" catch-all is dissolved) ───
+    # momentum = trending sources gated anti-laggard; launch = young pools;
+    # social = telegram calls with on-chain confirmation; other = fallback
+    # (observation-heavy: conf floor 0.9 above keeps it from trading).
+    launch_max_age_s: float = 7200.0  # older than 2h is not a launch
+    social_max_age_s: float = 21600.0  # a call on a >6h-old token is exit liquidity
+    launch_gate_min_liquidity_usd: float = 2000.0  # young pools: lower floor than global
+    launch_gate_min_holders: int = 0  # a 20-minute-old pool legitimately has few holders
+    mom_max_1h_pct: float = 80.0  # anti-laggard: Δ1h beyond this = already ran
+    mom_max_6h_pct: float = 150.0
+    # Per-route TP ladder overrides: "route=rung:frac|rung:frac;route=..."
+    # Momentum rides short continuations — take profit quicker.
+    route_tp_ladders: str = "momentum=0.2:0.5|0.4:1.0"
+    # Per-route max-hold overrides ("route:seconds"); others use EXIT_MAX_HOLD_S.
+    route_max_hold_s: str = "momentum:3600,launch:2700"
+
+    def parsed_route_tp_ladders(self) -> dict[str, list[tuple[float, float]]]:
+        out: dict[str, list[tuple[float, float]]] = {}
+        for part in self.route_tp_ladders.split(";"):
+            part = part.strip()
+            if not part or "=" not in part:
+                continue
+            route, _, ladder = part.partition("=")
+            rungs = []
+            for rung in ladder.split("|"):
+                threshold, _, fraction = rung.strip().partition(":")
+                if threshold and fraction:
+                    rungs.append((float(threshold), float(fraction)))
+            if rungs:
+                out[route.strip()] = sorted(rungs, key=lambda r: r[0])
+        return out
+
+    def parsed_route_max_hold_s(self) -> dict[str, float]:
+        return _parse_kv_floats(self.route_max_hold_s)
+
     risk_daily_loss_limit_sol: float = 1.0  # circuit breaker: stop buying past this daily loss
     exit_tp_pct: float = 0.30  # take profit at +30%
     exit_sl_pct: float = 0.15  # stop loss at -15%
@@ -198,7 +234,7 @@ class Settings(BaseSettings):
     # TP1 (+30%) the remainder stops out at +5% instead of riding back to
     # -15%; after TP2 (+50%) the stop locks at +30%. The trade can no longer
     # turn a winner into a loser. Empty = static SL (old behaviour).
-    exit_sl_ratchet: str = "0.3:0.05,0.5:0.30"
+    exit_sl_ratchet: str = "0.2:0.03,0.3:0.05,0.4:0.15,0.5:0.30"
 
     def parsed_tp_ladder(self) -> list[tuple[float, float]]:
         rungs: list[tuple[float, float]] = []
