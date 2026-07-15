@@ -29,37 +29,48 @@ def test_source_membership_covers_every_scanner_label():
 def test_momentum_gate_blocks_laggards_and_dumps():
     ok, why = momentum_gate(
         _c(price_change_5m_pct=2, price_change_1h_pct=15, price_change_6h_pct=40),
-        max_1h_pct=80, max_6h_pct=150,
+        max_1h_pct=80,
+        max_6h_pct=150,
     )
     assert ok, why  # young, rising: pass
 
     ok, why = momentum_gate(
         _c(price_change_5m_pct=-1, price_change_1h_pct=15, price_change_6h_pct=40),
-        max_1h_pct=80, max_6h_pct=150,
+        max_1h_pct=80,
+        max_6h_pct=150,
     )
     assert not ok and "stalled" in why
 
     ok, why = momentum_gate(
         _c(price_change_5m_pct=2, price_change_1h_pct=15, price_change_6h_pct=400),
-        max_1h_pct=80, max_6h_pct=150,
+        max_1h_pct=80,
+        max_6h_pct=150,
     )
     assert not ok and "laggard" in why
 
     ok, why = momentum_gate(
         _c(
-            price_change_5m_pct=2, price_change_1h_pct=15, price_change_6h_pct=40,
-            buyers_5m=3, sellers_5m=9,
+            price_change_5m_pct=2,
+            price_change_1h_pct=15,
+            price_change_6h_pct=40,
+            buyers_5m=3,
+            sellers_5m=9,
         ),
-        max_1h_pct=80, max_6h_pct=150,
+        max_1h_pct=80,
+        max_6h_pct=150,
     )
     assert not ok and "sellers" in why
 
     ok, why = momentum_gate(
         _c(
-            price_change_5m_pct=2, price_change_1h_pct=15, price_change_6h_pct=40,
-            buys_5m=4, sells_5m=10,
+            price_change_5m_pct=2,
+            price_change_1h_pct=15,
+            price_change_6h_pct=40,
+            buys_5m=4,
+            sells_5m=10,
         ),
-        max_1h_pct=80, max_6h_pct=150,
+        max_1h_pct=80,
+        max_6h_pct=150,
     )
     assert not ok and "buy ratio" in why
 

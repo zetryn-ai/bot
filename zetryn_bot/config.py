@@ -188,7 +188,29 @@ class Settings(BaseSettings):
     # Momentum rides short continuations — take profit quicker.
     route_tp_ladders: str = "momentum=0.2:0.5|0.4:1.0"
     # Per-route max-hold overrides ("route:seconds"); others use EXIT_MAX_HOLD_S.
-    route_max_hold_s: str = "momentum:3600,launch:2700"
+    route_max_hold_s: str = "momentum:3600,launch:2700,sniper:900"
+
+    # ── Sniper v2 rules engine (framework >=1.4.0, SniperConfig.use_scoring) ─
+    # Weighted 15-component score -> auto-buy >=90 / small-buy >=75 / watch
+    # >=60 / reject. Bands follow the user's sniper spec (2026-07-15); all
+    # tunable without code. sniper_use_scoring=False falls back to v1 rules.
+    sniper_use_scoring: bool = True
+    sniper_min_liquidity_usd: float = 1_500.0  # ~20 SOL — "best" band start
+    sniper_max_liquidity_usd: float = 40_000.0  # ~500 SOL — beyond this = late
+    sniper_min_mcap_usd: float = 10_000.0
+    sniper_max_mcap_usd: float = 150_000.0
+    sniper_max_fdv_usd: float = 1_000_000.0
+    sniper_min_volume_1m_usd: float = 1_500.0  # ~20 SOL first-minute flow
+    sniper_min_buy_ratio: float = 0.5
+    sniper_max_tax_pct: float = 5.0
+    sniper_min_curve_velocity: float = 1.0  # SOL/min into the curve
+    sniper_score_auto_buy: float = 90.0
+    sniper_score_small_buy: float = 75.0
+    sniper_score_watch: float = 60.0
+    # Stagnation exit for sniper positions: flat after this long = dead
+    # capital, free the slot ("time rules" in the sniper spec).
+    sniper_stagnation_after_s: float = 300.0
+    sniper_stagnation_max_pnl_pct: float = 0.05
 
     def parsed_route_tp_ladders(self) -> dict[str, list[tuple[float, float]]]:
         out: dict[str, list[tuple[float, float]]] = {}

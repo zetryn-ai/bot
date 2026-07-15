@@ -46,10 +46,10 @@ def test_scanners_enabled_filters_by_name():
 
 def test_enrichers_without_keys_are_rugcheck_and_jupiter_in_order():
     enrichers = build_enrichers(_settings())
-    assert [e.name for e in enrichers] == ["rugcheck", "jupiter"]
+    assert [e.name for e in enrichers] == ["rugcheck", "pumpfun_meta", "jupiter"]
 
 
 def test_enrichers_with_keys_include_helius_first_and_gmgn():
     enrichers = build_enrichers(_settings(helius_api_keys=["h1"], gmgn_api_key="g1"))
     names = [e.name for e in enrichers]
-    assert names == ["helius", "rugcheck", "gmgn", "jupiter"]
+    assert names == ["helius", "rugcheck", "pumpfun_meta", "gmgn", "jupiter"]

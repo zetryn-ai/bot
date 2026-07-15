@@ -54,6 +54,8 @@ class LifecycleEngine:
         trailing_arm_pnl_pct: float = 0.20,
         trailing_drawdown_pct: float = 0.50,
         tp_ladder: list[tuple[float, float]] | None = None,
+        stagnation_after_s: float = 0.0,
+        stagnation_max_pnl_pct: float = 0.05,
     ) -> None:
         self._graph = build_lifecycle()  # rule mode: deterministic, sub-ms
         self._ladder = sorted(tp_ladder or [(take_profit_pct, 1.0)], key=lambda r: r[0])
@@ -64,6 +66,8 @@ class LifecycleEngine:
             trailing_arms_at_pnl_pct=trailing_arm_pnl_pct,
             trailing_drawdown_pct=trailing_drawdown_pct,
             tp_ladder=self._ladder,
+            stagnation_after_s=stagnation_after_s,
+            stagnation_max_pnl_pct=stagnation_max_pnl_pct,
         )
         self._peaks: dict[str, float] = {}
         self._partials: dict[str, list[PartialExit]] = {}

@@ -61,6 +61,10 @@ class TokenCandidate(BaseModel):
     top10_holder_pct: float = 0.0
     dev_wallet_pct: float = 0.0
 
+    # Trading taxes in percent (from GMGN security; 0 = none/unknown)
+    buy_tax_pct: float = 0.0
+    sell_tax_pct: float = 0.0
+
     # Safety signals
     is_honeypot: bool = False
     is_mintable: bool = False
@@ -85,6 +89,11 @@ class TokenCandidate(BaseModel):
     bonding_curve_pct: float = 0.0  # progress toward graduation (0-100%)
     is_mayhem_mode: bool = False  # pump.fun turbo/mayhem mode flag
     creator_wallet: str = ""  # traderPublicKey (creator address)
+    # pumpfun_meta enricher (frontend-api-v3): demand + provenance signals
+    curve_velocity_sol_per_min: float = 0.0  # SOL inflow rate since launch
+    has_website: bool = False
+    has_twitter: bool = False
+    has_telegram: bool = False
 
     # DexScreener boost signals — paid promotion = team commitment signal
     boost_amount: float = 0.0  # current boost (USD, decays over time)

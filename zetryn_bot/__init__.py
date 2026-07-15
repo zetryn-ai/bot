@@ -35,6 +35,6 @@ heartbeat, and crash-dump capture. M8 adds deployment: a Docker image
 lands in a later phase (see ROADMAP.md).
 """
 
-__version__ = "0.12.1"
+__version__ = "0.13.0"
 
 __all__ = ["__version__"]

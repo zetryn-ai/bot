@@ -218,6 +218,7 @@ def _enter_cooldown(reset_unix_str: str | None) -> None:
 
 
 def _apply(candidate: TokenCandidate, info: dict, security: dict | None) -> TokenCandidate:
+    candidate = _apply_taxes(candidate, security)
     """Return ``candidate`` with GMGN info + security fields applied."""
     updates: dict = {}
 
@@ -342,3 +343,32 @@ def _f(d: dict, key: str) -> float:
 
 
 __all__ = ["GmgnEnricher"]
+
+
+def _apply_taxes(candidate: TokenCandidate, security: dict | None) -> TokenCandidate:
+    """Best-effort trading-tax extraction (sniper v2 hard-rejects on high tax).
+
+    GMGN's security payload has carried tax fields under several names over
+    time — probe the known spellings, accept 0..1 fractions or 0..100
+    percents, and leave 0 (=unknown) when nothing parses.
+    """
+    if not security:
+        return candidate
+
+    def _pick(*keys: str) -> float:
+        for k in keys:
+            v = security.get(k)
+            if v in (None, "", False):
+                continue
+            try:
+                f = float(v)
+            except (TypeError, ValueError):
+                continue
+            return f * 100.0 if 0 < f <= 1 else f
+        return 0.0
+
+    buy_tax = _pick("buy_tax", "buyTax", "buy_tax_pct")
+    sell_tax = _pick("sell_tax", "sellTax", "sell_tax_pct")
+    if buy_tax or sell_tax:
+        return candidate.model_copy(update={"buy_tax_pct": buy_tax, "sell_tax_pct": sell_tax})
+    return candidate

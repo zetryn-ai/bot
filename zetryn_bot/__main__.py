@@ -251,6 +251,18 @@ async def build_orchestrator(settings: Settings) -> Orchestrator:
                 )
                 for r in set(route_ladders) | set(route_holds)
             }
+            # Sniper v2 "time rules": a flat sniper position past the window
+            # is dead capital — exit and free the slot.
+            route_lifecycles["sniper"] = LifecycleEngine(
+                take_profit_pct=settings.exit_tp_pct,
+                stop_loss_pct=settings.exit_sl_pct,
+                max_hold_s=route_holds.get("sniper", settings.exit_max_hold_s),
+                trailing_arm_pnl_pct=settings.exit_trailing_arm_pnl_pct,
+                trailing_drawdown_pct=settings.exit_trailing_drawdown_pct,
+                tp_ladder=route_ladders.get("sniper", settings.parsed_tp_ladder()) or None,
+                stagnation_after_s=settings.sniper_stagnation_after_s,
+                stagnation_max_pnl_pct=settings.sniper_stagnation_max_pnl_pct,
+            )
             log.info(
                 "lifecycle agent ENABLED — framework rule exits "
                 "(TP +{:.0%}, SL -{:.0%}, max-hold {:.0f}s, trailing arm "
@@ -341,11 +353,30 @@ async def build_orchestrator(settings: Settings) -> Orchestrator:
 
         launch_memory = LaunchMemory()
         max_age = settings.sniper_max_age_s
+        # Sniper v2 (framework >=1.4.0): weighted 15-component rules engine.
+        # min_volume_1h=0 — a 30-second-old token has no 1h history; the
+        # age-appropriate volume floor is the 1-minute one inside the score.
+        sniper_config = SniperConfig(
+            use_scoring=settings.sniper_use_scoring,
+            min_liquidity_usd=settings.sniper_min_liquidity_usd,
+            min_volume_1h=0,
+            max_liquidity_usd=settings.sniper_max_liquidity_usd,
+            min_mcap_usd=settings.sniper_min_mcap_usd,
+            max_mcap_usd=settings.sniper_max_mcap_usd,
+            max_fdv_usd=settings.sniper_max_fdv_usd,
+            min_volume_1m=settings.sniper_min_volume_1m_usd,
+            min_buy_ratio=settings.sniper_min_buy_ratio,
+            max_tax_pct=settings.sniper_max_tax_pct,
+            min_curve_velocity_sol_per_min=settings.sniper_min_curve_velocity,
+            score_auto_buy=settings.sniper_score_auto_buy,
+            score_small_buy=settings.sniper_score_small_buy,
+            score_watch=settings.sniper_score_watch,
+        )
         sniper_pipe = BotPipeline(
             build_sniper(llm_client=None),  # rule mode: no LLM in the hot loop
             enrichers=enrichers,
             sink=sink,
-            config=SniperConfig(),
+            config=sniper_config,
             route_label="sniper",
         )
         graduation_pipe = GraduationPipeline(

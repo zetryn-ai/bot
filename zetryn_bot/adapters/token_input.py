@@ -59,6 +59,7 @@ def to_token_input(candidate: TokenCandidate) -> TokenInput:
         source=source,
         market=MarketData(
             mcap=candidate.market_cap_usd,
+            fdv=candidate.fdv_usd,
             liquidity_usd=candidate.liquidity_usd,
             volume_1h=candidate.volume_1h_usd,
             volume_24h=candidate.volume_24h_usd,
@@ -86,6 +87,8 @@ def to_token_input(candidate: TokenCandidate) -> TokenInput:
             dev_pct=candidate.dev_wallet_pct / 100.0,
         ),
         contract=ContractData(
+            buy_tax_pct=candidate.buy_tax_pct,
+            sell_tax_pct=candidate.sell_tax_pct,
             mint_authority_active=candidate.is_mintable,
             freeze_authority_active=candidate.is_freezable,
             is_honeypot=candidate.is_honeypot,
@@ -107,6 +110,11 @@ def to_token_input(candidate: TokenCandidate) -> TokenInput:
                 creator_sol_buy=candidate.creator_sol_buy,
                 bonding_curve_pct=candidate.bonding_curve_pct,
                 is_mayhem_mode=candidate.is_mayhem_mode,
+                curve_sol=candidate.bonding_curve_sol,
+                curve_velocity_sol_per_min=candidate.curve_velocity_sol_per_min,
+                has_website=candidate.has_website,
+                has_twitter=candidate.has_twitter,
+                has_telegram=candidate.has_telegram,
             )
             if source == "pumpfun_ws"
             else None

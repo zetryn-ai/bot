@@ -120,6 +120,12 @@ def build_enrichers(settings: Settings) -> list[TokenEnricher]:
     # Rugcheck: no key required (optional Redis cache; None disables caching).
     enrichers.append(RugcheckEnricher())
 
+    # Pump.fun metadata (sniper v2): socials + live curve velocity. No key;
+    # the enricher itself no-ops for non-pumpfun_ws candidates.
+    from zetryn_bot.scanners.enrichers.pumpfun_meta import PumpfunMetaEnricher
+
+    enrichers.append(PumpfunMetaEnricher())
+
     if settings.gmgn_api_key:
         enrichers.append(GmgnEnricher(settings.gmgn_api_key))
     else:

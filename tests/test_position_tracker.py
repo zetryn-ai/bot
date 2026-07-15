@@ -301,9 +301,7 @@ async def test_curve_fallback_prices_and_exits_when_jupiter_has_no_route():
     jup = _NoRouteJupiter()
     risk = RiskManager(RiskConfig())
     curve = _FakeCurve(sol_to_lamports(0.27))  # +35% -> static TP fires
-    tracker = PositionTracker(
-        PaperExecutor(jup, curve=curve), jup, risk, now_fn=clock, curve=curve
-    )
+    tracker = PositionTracker(PaperExecutor(jup, curve=curve), jup, risk, now_fn=clock, curve=curve)
     await _open(tracker, size_sol=0.2, tp=0.3, route="sniper")  # curve fallback = sniper-only
     await tracker.check_once()
     assert tracker.open_count() == 0
@@ -393,7 +391,9 @@ async def test_extreme_quote_needs_two_sweeps_before_acting():
         async def quote(self, input_mint, output_mint, amount_atomic, slippage_bps=100):
             self.calls += 1
             sol = 84.6 if self.calls == 1 else 0.21 * amount_atomic / 1_000_000
-            return Quote(in_amount=amount_atomic, out_amount=sol_to_lamports(sol), price_impact_pct=0.0)
+            return Quote(
+                in_amount=amount_atomic, out_amount=sol_to_lamports(sol), price_impact_pct=0.0
+            )
 
     clock = _Clock()
     jup = _JunkThenSaneJupiter()

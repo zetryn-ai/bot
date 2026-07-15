@@ -5,6 +5,39 @@ All notable changes to `zetryn-bot` will be documented in this file.
 The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and
 the project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.13.0] — 2026-07-15
+
+**Sniper v2 — weighted rules engine** (framework `zetryn-trading` v1.4.0).
+The sniper route graduates from ~3 flat gates to a 15-component scored
+engine: base 40 plus liquidity/mcap/FDV bands, top-10 concentration,
+1-minute volume, buy ratio, smart-money/KOL/whale wallets, GMGN safety,
+bonding-curve velocity, socials, and a serial-deployer penalty. Tiers:
+score ≥90 auto-buy (1.0×), ≥75 small-buy (0.5×), ≥60 watch, else skip.
+Hard rejects: trading tax > `SNIPER_MAX_TAX_PCT`, bundler wallets over the
+gate limit.
+
+### Added
+
+- `PumpfunMetaEnricher` (`frontend-api-v3.pump.fun/coins/{mint}`, keyless;
+  endpoint verified live): fills `has_website/has_twitter/has_telegram`,
+  refreshes `bonding_curve_sol`, and derives `curve_velocity_sol_per_min`
+  (SOL inflow per minute since launch — demand rate, not just level).
+- Trading taxes (`buy_tax_pct`/`sell_tax_pct`) parsed from GMGN security
+  payloads (fraction or percent forms) and mapped into the framework's
+  `ContractData` for the tax hard-reject.
+- `SNIPER_*` env block (bands, floors, tier thresholds, stagnation);
+  `SNIPER_USE_SCORING=false` reverts to the v1 flat gate chain.
+- Sniper exits: dedicated lifecycle engine with `stagnation_stop` — a flat
+  position (|pnl| < 5%) after 300s exits and frees the slot; route
+  max-hold default now includes `sniper:900`.
+- Adapter now maps `fdv`, taxes, curve velocity, and social presence into
+  `TokenInput` (framework v1.4.0 schema).
+
+### Changed
+
+- `zetryn-trading` dependency: temporary git pin `@v1.4.0` until the PyPI
+  release is published.
+
 ## [0.12.1] — 2026-07-15
 
 ### Fixed

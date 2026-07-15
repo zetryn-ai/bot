@@ -7,7 +7,7 @@ build-backend = "hatchling.build"
 
 [project]
 name = "zetryn-bot"
-version = "0.12.1"
+version = "0.13.0"
 description = "Solana memecoin scanner sources and bot scaffolding — the I/O companion to zetryn-trading. Phase 1 scaffolding (scanner sources only)."
 readme = "README.md"
 requires-python = ">=3.11"
@@ -65,10 +65,10 @@ dependencies = [
     "twitter_login @ git+https://github.com/d60/twitter_login.git",  # Twitter scraper (no pypi)
     "nltk>=3.8",                                                # VADER sentiment for twitter scanner
 
-    # Decision framework — live on PyPI since v1.0.0 (2026-06-28), no git pin needed.
-    # >=1.2.0: market_gate accepts 0 thresholds, resolver splits CSV keys,
-    # alert/watch thresholds enforced, CalibrationMap + replay bridge available.
-    "zetryn-trading>=1.3.0",
+    # Decision framework. TEMPORARY git pin: v1.4.0 (Sniper v2 scoring +
+    # stagnation stop) is tagged but not yet on PyPI — revert to
+    # "zetryn-trading>=1.4.0" once published.
+    "zetryn-trading @ git+https://github.com/zetryn-ai/ai-agent.git@v1.4.0",
 
     # Wallet + live execution (M5)
     "solders>=0.21",            # Keypair, VersionedTransaction (Rust bindings, sign locally)
