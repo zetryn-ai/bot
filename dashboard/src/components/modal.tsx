@@ -4,7 +4,7 @@
 import { useEffect, useState } from "react";
 import { createPortal } from "react-dom";
 import type { AiActivityRow, OpenPosition, Trade } from "../api";
-import { PnlText, RouteBadge, ago, fmtDuration, fmtWhen, outcomeInfo } from "./bits";
+import { PnlText, RouteBadge, Usd, ago, fmtDuration, fmtUsd, fmtWhen, outcomeInfo } from "./bits";
 
 export function Modal({
   title,
@@ -261,7 +261,7 @@ export function AiDecisionModal({ row, onClose }: { row: AiActivityRow; onClose:
 
 // ── open position ────────────────────────────────────────────────────────────
 
-export function PositionModal({ pos, onClose }: { pos: OpenPosition; onClose: () => void }) {
+export function PositionModal({ pos, solUsd = 0, onClose }: { pos: OpenPosition; solUsd?: number; onClose: () => void }) {
   const heldS = (Date.now() - new Date(pos.opened_at).getTime()) / 1000;
   return (
     <Modal
@@ -294,7 +294,7 @@ export function PositionModal({ pos, onClose }: { pos: OpenPosition; onClose: ()
             ],
             ["Opened", fmtWhen(pos.opened_at)],
             ["Held for", `${fmtDuration(heldS)}`],
-            ["Entry size", <span className="mono">{pos.size_sol.toFixed(4)} SOL</span>],
+            ["Entry size", <span className="mono">{pos.size_sol.toFixed(4)} SOL <Usd sol={pos.size_sol} solUsd={solUsd} /></span>],
             ["Tokens held (atomic)", <span className="mono">{pos.tokens_atomic.toLocaleString()}</span>],
             ["Entry confidence", <span className="mono">{pos.confidence.toFixed(2)}</span>],
             ["Route", pos.route || "— (pre-routing position)"],
@@ -370,7 +370,7 @@ const REASON_EXPLAIN: Record<string, string> = {
   emergency: "Emergency exit (rug signal).",
 };
 
-export function TradeModal({ trade, onClose }: { trade: Trade; onClose: () => void }) {
+export function TradeModal({ trade, solUsd = 0, onClose }: { trade: Trade; solUsd?: number; onClose: () => void }) {
   const pnlPct = trade.size_sol ? (trade.pnl_sol / trade.size_sol) * 100 : 0;
   const entryPrice = trade.tokens_atomic ? trade.size_sol / trade.tokens_atomic : 0;
   const exitPrice = trade.tokens_atomic ? trade.exit_sol / trade.tokens_atomic : 0;
@@ -394,15 +394,15 @@ export function TradeModal({ trade, onClose }: { trade: Trade; onClose: () => vo
             [
               "Realized PnL",
               <span>
-                <PnlText v={trade.pnl_sol} /> SOL{" "}
+                <PnlText v={trade.pnl_sol} solUsd={solUsd} /> SOL{" "}
                 <span className={pnlPct > 0 ? "pos" : pnlPct < 0 ? "neg" : "muted"}>
                   ({pnlPct >= 0 ? "+" : ""}
                   {pnlPct.toFixed(1)}%)
                 </span>
               </span>,
             ],
-            ["Entry size", <span className="mono">{trade.size_sol.toFixed(4)} SOL</span>],
-            ["Exit value", <span className="mono">{trade.exit_sol.toFixed(4)} SOL</span>],
+            ["Entry size", <span className="mono">{trade.size_sol.toFixed(4)} SOL <Usd sol={trade.size_sol} solUsd={solUsd} /></span>],
+            ["Exit value", <span className="mono">{trade.exit_sol.toFixed(4)} SOL <Usd sol={trade.exit_sol} solUsd={solUsd} /></span>],
             ["Tokens (atomic)", <span className="mono">{trade.tokens_atomic.toLocaleString()}</span>],
             [
               "Entry price / token",

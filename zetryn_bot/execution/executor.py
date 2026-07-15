@@ -108,7 +108,12 @@ class PaperExecutor:
         q = await self._jup.quote(SOL_MINT, req.mint, lamports_in, self._slippage_bps)
         venue = "PAPER"
         tokens_out = q.out_amount if q is not None else 0
-        if tokens_out <= 0 and self._curve is not None:
+        # Curve fallback is for the SNIPER route only. Graduation tokens have
+        # LEFT the curve — but right after migration the pump.fun API can
+        # still show pre-flip reserves, so a curve "fill" prices at the
+        # curve's INITIAL price (~15-35x too many tokens). That fabricated
+        # +13.07 SOL across 20 graduation trades on 2026-07-13..15.
+        if tokens_out <= 0 and self._curve is not None and req.route == "sniper":
             curve_out = await self._curve.buy_quote(req.mint, lamports_in)
             if curve_out:
                 tokens_out = curve_out
@@ -144,7 +149,7 @@ class PaperExecutor:
         )
         venue = "PAPER"
         lamports_out = q.out_amount if q is not None else 0
-        if lamports_out <= 0 and self._curve is not None:
+        if lamports_out <= 0 and self._curve is not None and position.route == "sniper":
             curve_out = await self._curve.sell_quote(position.mint, position.tokens_atomic)
             if curve_out:
                 lamports_out = curve_out

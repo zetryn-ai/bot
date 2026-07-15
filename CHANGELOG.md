@@ -5,6 +5,28 @@ All notable changes to `zetryn-bot` will be documented in this file.
 The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and
 the project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.12.1] — 2026-07-15
+
+### Fixed
+
+- **Graduation phantom fills (+13.07 SOL fabricated)**: right after a
+  migration the pump.fun API can still show pre-flip virtual reserves, so
+  the curve fallback "filled" graduation buys at the curve's INITIAL price
+  (~15-35x too many tokens; 20 trades, entry price identical 2.8e-14
+  SOL/atomic). Curve fallback (buys, sells, sweep pricing) is now
+  **sniper-route only**. The 20 fabricated rows were deleted and
+  `risk_state` recomputed — honest all-time PnL: **+0.5206 SOL**.
+
+### Added
+
+- Overview: **Wallet balance** tile (paper start + realized PnL, with
+  live USD) and **per-route cards** — Sniper / Momentum / New Launch /
+  Graduation, each showing positions opened, PnL, and win rate.
+- **USD conversion everywhere SOL appears** (tiles, route cards, position
+  cards, trade history, all modals) via Jupiter lite price v3 (60s cache,
+  keyless; endpoint verified live), exposed as `sol_usd` on /api/overview.
+- `PAPER_START_BALANCE_SOL` env for the balance tile's starting capital.
+
 ## [0.12.0] — 2026-07-13
 
 **M12 — strategy-first routing.** The "scanner" catch-all (user finding:

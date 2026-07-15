@@ -1,6 +1,6 @@
 import { useState } from "react";
 import type { AiActivityRow, OpenPosition, Overview as OverviewData } from "../api";
-import { OutcomeBadge, RouteBadge, StatTile, ago, usePoll } from "../components/bits";
+import { OutcomeBadge, RouteBadge, StatTile, Usd, ago, fmtUsd, usePoll } from "../components/bits";
 import { AiDecisionModal, PositionModal } from "../components/modal";
 
 function AiActivityTable({ rows }: { rows: AiActivityRow[] }) {
@@ -164,10 +164,12 @@ function PositionsGrid({
   positions,
   ladder,
   routeLadders,
+  solUsd,
 }: {
   positions: OpenPosition[];
   ladder: [number, number][];
   routeLadders: Record<string, [number, number][]>;
+  solUsd: number;
 }) {
   const [selected, setSelected] = useState<OpenPosition | null>(null);
   if (!positions.length) return <p className="muted">No open positions.</p>;
@@ -189,6 +191,7 @@ function PositionsGrid({
             <PnlBar pos={p} ladder={ladder} routeLadders={routeLadders} />
             <div className="pos-meta muted">
               <span className="mono">{p.size_sol.toFixed(4)} SOL</span>
+              <Usd sol={p.size_sol} solUsd={solUsd} />
               <span>conf <span className="mono">{p.confidence.toFixed(2)}</span></span>
               <span>{p.execution_mode}</span>
               <span>{p.status}</span>
@@ -196,7 +199,7 @@ function PositionsGrid({
           </div>
         ))}
       </div>
-      {selected && <PositionModal pos={selected} onClose={() => setSelected(null)} />}
+      {selected && <PositionModal pos={selected} solUsd={solUsd} onClose={() => setSelected(null)} />}
     </>
   );
 }
@@ -208,24 +211,38 @@ export default function Overview() {
   if (error) return <p className="neg">Failed to load: {error}</p>;
   if (!ov) return <p className="muted">Loading…</p>;
 
+  const u = ov.sol_usd;
+  const sol = (v: number) =>
+    `${v >= 0 ? "+" : ""}${v.toFixed(4)} SOL${u ? ` (${fmtUsd(v, u)})` : ""}`;
+  const ROUTE_CARDS: [string, string, string][] = [
+    ["sniper", "⚡", "Sniper"],
+    ["momentum", "📈", "Momentum"],
+    ["launch", "🚀", "New Launch"],
+    ["graduation", "🎓", "Graduation"],
+  ];
   return (
     <>
       <div className="tiles">
         <StatTile
-          label="PnL today"
-          value={`${ov.today_pnl_sol >= 0 ? "+" : ""}${ov.today_pnl_sol.toFixed(4)} SOL`}
-          tone={ov.today_pnl_sol > 0 ? "pos" : ov.today_pnl_sol < 0 ? "neg" : undefined}
+          label="Wallet balance"
+          value={`${ov.wallet_balance_sol.toFixed(3)} SOL`}
+          sub={u ? `${fmtUsd(ov.wallet_balance_sol, u)} · SOL $${u.toFixed(2)}` : undefined}
+          tone={ov.wallet_balance_sol > 0 ? "pos" : undefined}
         />
-        <StatTile label="Open positions" value={String(ov.open_positions.length)} />
         <StatTile
-          label="Win rate"
-          value={`${Math.round(ov.win_rate * 100)}%`}
-          sub={`${ov.closed_count} closed trades`}
+          label="PnL today"
+          value={sol(ov.today_pnl_sol)}
+          tone={ov.today_pnl_sol > 0 ? "pos" : ov.today_pnl_sol < 0 ? "neg" : undefined}
         />
         <StatTile
           label="Total PnL"
-          value={`${ov.total_pnl_sol >= 0 ? "+" : ""}${ov.total_pnl_sol.toFixed(4)} SOL`}
+          value={sol(ov.total_pnl_sol)}
           tone={ov.total_pnl_sol > 0 ? "pos" : ov.total_pnl_sol < 0 ? "neg" : undefined}
+        />
+        <StatTile
+          label="Win rate"
+          value={`${Math.round(ov.win_rate * 100)}%`}
+          sub={`${ov.closed_count} closed · ${ov.open_positions.length} open`}
         />
         <StatTile
           label="Circuit breaker"
@@ -235,11 +252,40 @@ export default function Overview() {
         />
       </div>
 
+      <div className="route-cards">
+        {ROUTE_CARDS.map(([key, icon, label]) => {
+          const r = ov.route_summary[key];
+          const wr = r ? Math.round(r.win_rate * 100) : 0;
+          return (
+            <div className="route-card" key={key}>
+              <div className="rc-top">
+                <span className="rc-icon">{icon}</span>
+                <span className="rc-label">{label}</span>
+              </div>
+              <div className="rc-count mono">{r ? r.positions : 0}</div>
+              <div className="rc-sub muted">positions opened</div>
+              <div className="rc-foot">
+                <span className={`mono ${r && r.pnl_sol >= 0 ? "pos" : "neg"}`}>
+                  {r ? `${r.pnl_sol >= 0 ? "+" : ""}${r.pnl_sol.toFixed(3)}` : "0.000"}
+                  {u && r ? ` (${fmtUsd(r.pnl_sol, u)})` : ""}
+                </span>
+                <span className="muted">WR {wr}%</span>
+              </div>
+            </div>
+          );
+        })}
+      </div>
+
       <div className="card">
         <h2>
           Open positions <span className="hint">click a row for details</span>
         </h2>
-        <PositionsGrid positions={ov.open_positions} ladder={ov.tp_ladder ?? []} routeLadders={ov.route_tp_ladders ?? {}} />
+        <PositionsGrid
+          positions={ov.open_positions}
+          ladder={ov.tp_ladder ?? []}
+          routeLadders={ov.route_tp_ladders ?? {}}
+          solUsd={u}
+        />
       </div>
 
       <div className="card">

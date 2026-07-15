@@ -39,7 +39,7 @@ def _tracker(current_sol, clock):
     return PositionTracker(ex, jup, risk, now_fn=clock), risk
 
 
-async def _open(tracker, size_sol=0.2, tp=0.3, sl=0.15, max_hold=1800):
+async def _open(tracker, size_sol=0.2, tp=0.3, sl=0.15, max_hold=1800, route=""):
     pos = Position(
         mint="MintA",
         symbol="AAA",
@@ -49,6 +49,7 @@ async def _open(tracker, size_sol=0.2, tp=0.3, sl=0.15, max_hold=1800):
         stop_loss_pct=sl,
         max_hold_s=max_hold,
         confidence=0.8,
+        route=route,
     )
     await tracker.add(pos)
 
@@ -303,12 +304,30 @@ async def test_curve_fallback_prices_and_exits_when_jupiter_has_no_route():
     tracker = PositionTracker(
         PaperExecutor(jup, curve=curve), jup, risk, now_fn=clock, curve=curve
     )
-    await _open(tracker, size_sol=0.2, tp=0.3)
+    await _open(tracker, size_sol=0.2, tp=0.3, route="sniper")  # curve fallback = sniper-only
     await tracker.check_once()
     assert tracker.open_count() == 0
     trade = tracker._closed[0]
     assert trade.reason == "take_profit"
     assert trade.exit_sol == pytest.approx(0.27)
+
+
+@pytest.mark.asyncio
+async def test_curve_fallback_ignored_for_non_sniper_routes():
+    # Graduation/launch tokens have LEFT the curve — a curve fill would price
+    # at the stale initial reserves (the phantom +13 SOL incident 2026-07-15).
+    clock = _Clock()
+    jup = _NoRouteJupiter()
+    risk = RiskManager(RiskConfig())
+    curve = _FakeCurve(sol_to_lamports(0.27))
+    tracker = PositionTracker(
+        PaperExecutor(jup, curve=curve), jup, risk, now_fn=clock, curve=curve, dead_route_after=1
+    )
+    await _open(tracker, size_sol=0.2, tp=0.3, route="graduation", max_hold=0)
+    clock.t += 1
+    await tracker.check_once()
+    # No curve pricing → treated as a no-route position, not a fabricated win.
+    assert not any(t.pnl_sol > 0 for t in tracker._closed)
 
 
 @pytest.mark.asyncio

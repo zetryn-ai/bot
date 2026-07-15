@@ -124,6 +124,10 @@ class Settings(BaseSettings):
     # M3 (LogSink only, no positions). Turn on to paper-trade alerts.
     execution_enabled: bool = False
     risk_base_size_sol: float = 0.1  # base position size; actual = base x confidence
+    # Paper-mode starting balance (SOL). Wallet balance shown on the dashboard =
+    # this + cumulative realized PnL. Target go-live capital is ~$50; set to the
+    # SOL equivalent. 0 = show cumulative PnL only.
+    paper_start_balance_sol: float = 0.0
     risk_min_confidence: float = 0.6  # only alerts at/above this confidence buy
     risk_max_positions: int = 5  # max concurrent open positions
     # Decision actions that trigger a buy (CSV). Default alert-only (live-safe);

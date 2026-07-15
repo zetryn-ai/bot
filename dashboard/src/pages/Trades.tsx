@@ -1,6 +1,6 @@
 import { useState } from "react";
 import type { Trade, TradesPage } from "../api";
-import { PnlText, RouteBadge, ago, usePoll } from "../components/bits";
+import { PnlText, RouteBadge, Usd, ago, usePoll } from "../components/bits";
 import { TradeModal } from "../components/modal";
 
 const PAGE = 25;
@@ -9,6 +9,8 @@ export default function Trades() {
   const [offset, setOffset] = useState(0);
   const [reason, setReason] = useState("");
   const [selected, setSelected] = useState<Trade | null>(null);
+  const { data: ov } = usePoll<{ sol_usd: number }>("/api/overview", 30000);
+  const solUsd = ov?.sol_usd ?? 0;
   const q = new URLSearchParams({ limit: String(PAGE), offset: String(offset) });
   if (reason) q.set("reason", reason);
   const { data, error } = usePoll<TradesPage>(`/api/trades?${q}`, 10000);
@@ -71,10 +73,10 @@ export default function Trades() {
                     <td>
                       <RouteBadge route={t.route} />
                     </td>
-                    <td className="num mono">{t.size_sol.toFixed(4)}</td>
+                    <td className="num mono">{t.size_sol.toFixed(4)}<Usd sol={t.size_sol} solUsd={solUsd} /></td>
                     <td className="num mono">{t.exit_sol.toFixed(4)}</td>
                     <td className="num">
-                      <PnlText v={t.pnl_sol} />
+                      <PnlText v={t.pnl_sol} solUsd={solUsd} />
                     </td>
                     <td className="secondary">{t.reason}</td>
                     <td className="num mono">{t.confidence.toFixed(2)}</td>
@@ -101,7 +103,7 @@ export default function Trades() {
           </div>
         </>
       )}
-      {selected && <TradeModal trade={selected} onClose={() => setSelected(null)} />}
+      {selected && <TradeModal trade={selected} solUsd={solUsd} onClose={() => setSelected(null)} />}
     </div>
   );
 }

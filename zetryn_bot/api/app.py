@@ -17,6 +17,7 @@ from fastapi import Depends, FastAPI, HTTPException, Query, Request
 from fastapi.staticfiles import StaticFiles
 from sqlalchemy import case, func, select
 
+from zetryn_bot.api.solprice import sol_usd
 from zetryn_bot.config import Settings
 from zetryn_bot.db.engine import build_engine, build_session_factory
 from zetryn_bot.db.models import (
@@ -91,8 +92,36 @@ async def overview() -> dict:
                 )
             )
         ).one()
+        # Per-route summary: how many DISTINCT positions each strategy opened
+        # (partial_tp rows are ladder slices of one position, not separate
+        # trades — count distinct mint+opened_at) and its win rate.
+        route_rows = (
+            await session.execute(
+                select(
+                    ClosedTradeModel.route,
+                    func.count(
+                        func.distinct(
+                            func.concat(ClosedTradeModel.mint, ClosedTradeModel.opened_at)
+                        )
+                    ),
+                    func.coalesce(func.sum(ClosedTradeModel.pnl_sol), 0),
+                    func.count(ClosedTradeModel.id).filter(ClosedTradeModel.pnl_sol > 0),
+                    func.count(ClosedTradeModel.id),
+                ).group_by(ClosedTradeModel.route)
+            )
+        ).all()
     daily_limit = settings.risk_daily_loss_limit_sol
     today = float(today_pnl or 0)
+    total_pnl_f = float(total_pnl)
+    sol_price = await sol_usd()
+    route_summary = {
+        (route or "other"): {
+            "positions": int(positions),
+            "pnl_sol": float(pnl),
+            "win_rate": (int(w) / int(rows)) if rows else 0.0,
+        }
+        for route, positions, pnl, w, rows in route_rows
+    }
     return {
         "open_positions": [
             {
@@ -125,8 +154,11 @@ async def overview() -> dict:
             "tripped": today <= -daily_limit,
         },
         "closed_count": int(closed_count),
-        "total_pnl_sol": float(total_pnl),
+        "total_pnl_sol": total_pnl_f,
         "win_rate": (int(wins) / int(closed_count)) if closed_count else 0.0,
+        "sol_usd": sol_price,
+        "wallet_balance_sol": settings.paper_start_balance_sol + total_pnl_f,
+        "route_summary": route_summary,
     }
 
 

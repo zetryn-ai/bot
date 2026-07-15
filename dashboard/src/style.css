@@ -168,6 +168,17 @@ td.num, th.num { text-align: right; font-variant-numeric: tabular-nums; }
 .badge.info    { border-color: rgba(0, 229, 255, 0.5); color: var(--info); background: rgba(0, 229, 255, 0.07); }
 .badge.route   { border-color: rgba(153, 69, 255, 0.55); color: #c9a2ff; background: rgba(153, 69, 255, 0.1); }
 
+/* ── per-route summary cards ── */
+.route-cards { display: grid; grid-template-columns: repeat(auto-fit, minmax(150px, 1fr)); gap: 10px; margin-bottom: 18px; }
+.route-card { background: rgba(18,18,26,0.72); backdrop-filter: blur(12px); border: 1px solid var(--border-default); border-radius: 12px; padding: 12px 14px; }
+.rc-top { display: flex; align-items: center; gap: 7px; font-size: 12px; color: var(--text-secondary); }
+.rc-icon { font-size: 15px; }
+.rc-label { text-transform: uppercase; letter-spacing: 0.05em; font-weight: 600; }
+.rc-count { font-size: 26px; font-weight: 700; margin-top: 6px; }
+.rc-sub { font-size: 10.5px; text-transform: uppercase; letter-spacing: 0.04em; }
+.rc-foot { display: flex; justify-content: space-between; margin-top: 8px; font-size: 12px; }
+.usd-tag { color: var(--text-muted); font-size: 0.86em; }
+
 /* ── open position cards + PnL progress bar ── */
 .positions-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(320px, 1fr)); gap: 12px; }
 .position-card {

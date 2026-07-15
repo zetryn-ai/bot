@@ -60,6 +60,9 @@ export interface Overview {
   closed_count: number;
   total_pnl_sol: number;
   win_rate: number;
+  sol_usd: number;
+  wallet_balance_sol: number;
+  route_summary: Record<string, { positions: number; pnl_sol: number; win_rate: number }>;
 }
 
 export interface AiActivityRow {

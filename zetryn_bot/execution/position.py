@@ -316,8 +316,10 @@ class PositionTracker:
 
             # Curve-phase tokens (fresh pump.fun launches) aren't routable on
             # Jupiter yet — price them from the bonding curve instead so TP/SL
-            # and mark-to-market work from the first sweep.
-            if current_lamports <= 0 and self._curve is not None:
+            # and mark-to-market work from the first sweep. SNIPER ONLY: for
+            # any other route the curve is stale/finished and prices lie
+            # (graduation phantom-fill incident 2026-07-15).
+            if current_lamports <= 0 and self._curve is not None and position.route == "sniper":
                 curve_out = await self._curve.sell_quote(mint, position.tokens_atomic)
                 if curve_out:
                     current_lamports = curve_out

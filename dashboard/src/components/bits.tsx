@@ -171,11 +171,33 @@ export function RouteBadge({ route }: { route: string }) {
   );
 }
 
-export function PnlText({ v, digits = 4 }: { v: number; digits?: number }) {
+export function fmtUsd(sol: number, solUsd: number): string {
+  if (!solUsd) return "";
+  const usd = sol * solUsd;
+  const abs = Math.abs(usd);
+  const s = abs >= 1000 ? `$${(usd / 1000).toFixed(2)}k` : `$${usd.toFixed(2)}`;
+  return usd < 0 ? `-${s.replace("-", "")}` : s;
+}
+
+export function Usd({ sol, solUsd }: { sol: number; solUsd: number }) {
+  if (!solUsd) return null;
+  return <span className="usd-tag">≈ {fmtUsd(sol, solUsd)}</span>;
+}
+
+export function PnlText({
+  v,
+  digits = 4,
+  solUsd,
+}: {
+  v: number;
+  digits?: number;
+  solUsd?: number;
+}) {
   return (
     <span className={`mono ${v > 0 ? "pos" : v < 0 ? "neg" : "muted"}`}>
       {v >= 0 ? "+" : ""}
       {v.toFixed(digits)}
+      {solUsd ? <span className="usd-tag"> ({fmtUsd(v, solUsd)})</span> : null}
     </span>
   );
 }
