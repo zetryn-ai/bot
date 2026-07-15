@@ -195,7 +195,13 @@ class Settings(BaseSettings):
     # >=60 / reject. Bands follow the user's sniper spec (2026-07-15); all
     # tunable without code. sniper_use_scoring=False falls back to v1 rules.
     sniper_use_scoring: bool = True
-    sniper_min_liquidity_usd: float = 1_500.0  # ~20 SOL — "best" band start
+    # HARD floor: the framework's fast_market gate rejects below this BEFORE
+    # sniper_score runs. A fresh pump.fun launch sits at ~$370-850 liquidity
+    # (~5% bonding-curve progress) — the exact population the sniper targets —
+    # so 1500 rejected essentially the whole feed (scores/conf all 0.0). 400
+    # lets fresh launches reach scoring; the liquidity BAND bonus (+8) and the
+    # curve-velocity / buy-ratio / smart-money components then judge quality.
+    sniper_min_liquidity_usd: float = 400.0  # ~2.6 SOL in curve — early snipe floor
     sniper_max_liquidity_usd: float = 40_000.0  # ~500 SOL — beyond this = late
     sniper_min_mcap_usd: float = 10_000.0
     sniper_max_mcap_usd: float = 150_000.0

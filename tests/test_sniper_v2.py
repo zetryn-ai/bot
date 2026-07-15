@@ -151,7 +151,7 @@ async def test_pumpfun_meta_non_200_passthrough():
 def test_sniper_v2_settings_defaults():
     settings = Settings(_env_file=None)
     assert settings.sniper_use_scoring is True
-    assert settings.sniper_min_liquidity_usd == 1500
+    assert settings.sniper_min_liquidity_usd == 400
     assert settings.sniper_max_liquidity_usd == 40000
     assert settings.sniper_max_fdv_usd == 1_000_000
     assert settings.sniper_max_tax_pct == 5.0

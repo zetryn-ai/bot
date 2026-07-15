@@ -83,6 +83,38 @@ def test_safety_flags_pass_through_to_contract():
     assert contract.is_dangerous is True
 
 
+def test_pumpfun_mint_freeze_authority_not_dangerous():
+    """Pump.fun bonding-curve tokens hold mint/freeze authority in the PROGRAM
+    until graduation — not a dev backdoor. Enrichers flag it transiently on
+    seconds-old tokens (rugcheck "Mint Authority" warn risk, gmgn
+    renounced=false), which made the sniper's fast_safety gate abort the whole
+    feed before scoring. It must NOT count as dangerous for pump.fun."""
+    candidate = _candidate(
+        sources=["pumpfun.ws"],
+        is_mintable=True,
+        is_freezable=True,
+    )
+    contract = to_token_input(candidate).contract
+    assert contract.mint_authority_active is False
+    assert contract.freeze_authority_active is False
+    assert contract.is_dangerous is False
+
+
+def test_pumpfun_real_rug_signals_still_dangerous():
+    """Suppression is scoped to mint/freeze authority only — honeypot, bundled
+    supply, and dev rug history remain fatal even for pump.fun."""
+    for flag in ("is_honeypot", "bundled_supply", "dev_rug_history"):
+        candidate = _candidate(sources=["pumpfun.ws"], **{flag: True})
+        assert to_token_input(candidate).contract.is_dangerous is True, flag
+
+
+def test_non_pumpfun_mint_authority_still_dangerous():
+    """The suppression must NOT leak to other sources — an active mint
+    authority on a normal SPL token is a genuine rug vector."""
+    candidate = _candidate(sources=["dexscreener.new_pairs"], is_mintable=True)
+    assert to_token_input(candidate).contract.is_dangerous is True
+
+
 def test_wallet_intel_maps_gmgn_counts():
     candidate = _candidate(
         gmgn_safety_score=72.0,

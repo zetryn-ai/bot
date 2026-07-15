@@ -5,6 +5,27 @@ All notable changes to `zetryn-bot` will be documented in this file.
 The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and
 the project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.13.1] — 2026-07-15
+
+### Fixed
+
+- **Sniper scoring/confidence always 0.0** — root-caused to the sniper feed
+  being rejected at two hard gates *before* `sniper_score` ever ran (24h: 1940
+  aborts + 3154 skips vs 53 scored):
+  - **False-positive rug abort.** Fresh pump.fun tokens hold mint+freeze
+    authority in the pump.fun PROGRAM until graduation (revoked at migration) —
+    not a dev backdoor. Enrichers flag it transiently on seconds-old tokens
+    (rugcheck warn-level "Mint/Freeze Authority still enabled" substring match;
+    gmgn `renounced=false`), so `contract.is_dangerous` tripped and the
+    framework's `fast_safety` gate aborted the whole feed. The bot cached that
+    verdict for 1h, so it stuck even after the token cleaned up. The adapter now
+    suppresses mint/freeze authority as a danger signal for `pumpfun_ws` source;
+    honeypot / bundled-supply / dev-rug-history remain fatal.
+  - **Liquidity floor too high.** `SNIPER_MIN_LIQUIDITY_USD` default lowered
+    1500 → 400. A fresh launch sits ~$370-850 (~5% bonding-curve), the exact
+    sniper target, so 1500 skipped it before scoring. The score's liquidity
+    band + curve velocity now judge quality above the floor.
+
 ## [0.13.0] — 2026-07-15
 
 **Sniper v2 — weighted rules engine** (framework `zetryn-trading` v1.4.0).

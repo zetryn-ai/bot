@@ -51,6 +51,9 @@ def to_token_input(candidate: TokenCandidate) -> TokenInput:
     not call the network or mutate its argument.
     """
     source = _map_source(candidate.sources)
+    # Bonding-curve phase (pre-graduation pump.fun): mint/freeze authority is
+    # program-held and revoked at graduation — see the ContractData note below.
+    _is_pumpfun_curve = source == "pumpfun_ws"
 
     return TokenInput(
         mint=candidate.address,
@@ -89,8 +92,18 @@ def to_token_input(candidate: TokenCandidate) -> TokenInput:
         contract=ContractData(
             buy_tax_pct=candidate.buy_tax_pct,
             sell_tax_pct=candidate.sell_tax_pct,
-            mint_authority_active=candidate.is_mintable,
-            freeze_authority_active=candidate.is_freezable,
+            # Pump.fun bonding-curve tokens hold mint+freeze authority in the
+            # pump.fun PROGRAM until graduation (revoked at migration) — it is
+            # not a dev backdoor, so an active authority here is NOT a rug
+            # signal. Enrichers flag it transiently on seconds-old tokens
+            # (rugcheck warn-level "Mint/Freeze Authority still enabled" →
+            # substring match; gmgn renounced=false), which made the sniper's
+            # fast_safety gate abort the ENTIRE fresh-token feed before scoring
+            # ever ran (scores/conf all 0.0). Suppress it for the curve phase;
+            # the real rug signals below (honeypot, bundled supply, dev rug
+            # history) are preserved.
+            mint_authority_active=candidate.is_mintable and not _is_pumpfun_curve,
+            freeze_authority_active=candidate.is_freezable and not _is_pumpfun_curve,
             is_honeypot=candidate.is_honeypot,
             bundled_supply=candidate.bundled_supply,
             dev_rug_history=candidate.dev_rug_history,
