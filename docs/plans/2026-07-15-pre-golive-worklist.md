@@ -26,6 +26,12 @@ Dashboard LIVE https://zetryn.lemacore.com.
 - **Fokus pengembangan (urut): Eksekusi → Data/filter → Exit tuning → (jauh) AI.**
   Route paling profit jalan **rule-mode tanpa LLM**, jadi menaikkan kualitas
   prompt = mengoptimalkan bagian yang lemah.
+- **⭐ QUICK WIN (P1-5):** band keputusan `watch` (conf ~0.54) **rugi −0.39 SOL**
+  (113 trade, 40% WR, tanpa moonshot); `buy` (~0.89) **+0.95 SOL** & memuat semua
+  moonshot; `alert` (~0.77) +0.04 tipis. Buang `watch` dari `RISK_BUY_ACTIONS`
+  → +0.49 SOL historis jadi **~+0.88 SOL**, nol risiko. Scoring/tiering framework
+  **sudah SESUAI** (band naik → WR naik); yang salah cuma konfig bot menradingkan
+  tier terendah.
 
 ---
 
@@ -93,6 +99,31 @@ Dashboard LIVE https://zetryn.lemacore.com.
 - v0.13.0 baru live beberapa jam. Kumpulkan sampel: apakah `stagnation_stop`
   (flat 300s → exit) dan tier scoring (`score N -> tier`) berperilaku benar di
   feed. Bandingkan WR sniper v2 vs v1. **Bukan kode — analisa data.**
+
+### P1-5. Buang band `watch` dari `RISK_BUY_ACTIONS`  ⭐ quick win ROI tertinggi
+- **Masalah (data DB, join closed_trades→ai_decisions per action band):**
+
+  | Band | conf | n | PnL SOL | WR | avg/trade | win terbaik |
+  |---|---|---|---|---|---|---|
+  | **buy** | ~0.89 | 36 | **+0.950** | 63.9% | +0.0264 | +0.294 (moonshot ada di sini) |
+  | **alert** | ~0.77 | 16 | +0.038 | 62.5% | +0.0024 | +0.023 |
+  | **watch** | ~0.54 | 113 | **−0.393** | 39.8% | −0.0035 | +0.043 (tanpa ekor moonshot) |
+
+  Band `watch` **menghancurkan modal**: −0.39 SOL dari 113 trade, 45 menang /
+  68 kalah, dan **tidak ada moonshot** yang tersembunyi (win terbaik cuma
+  +0.043). Semua profit + semua moonshot ada di band `buy`. Framework MEMANG
+  menandai tier ini "watch, jangan beli" — konfig bot `RISK_BUY_ACTIONS=
+  alert,watch,buy` yang memaksa membelinya. **Data membenarkan framework.**
+- **Target:** ubah `RISK_BUY_ACTIONS=alert,buy` (buang `watch`). Estimasi
+  dampak historis: total PnL naik dari +0.49 → **~+0.88 SOL** (menghilangkan
+  −0.39 tanpa kehilangan satu pun moonshot). Reversible, nol risiko kode.
+- **Catatan:** `alert` positif tapi tipis (n=16, +0.038) — pertahankan untuk
+  sekarang, pantau; kalau tetap marginal di window berikutnya, pertimbangkan
+  `RISK_BUY_ACTIONS=buy` saja.
+- **Sentuh:** VPS `.env` (`RISK_BUY_ACTIONS`), `.env.example`. **Bukan kode.**
+- **Kaitan skor:** tiering framework SUDAH SESUAI arah — makin tinggi band,
+  makin tinggi WR & profit (watch 40% → alert/buy ~63%). Yang salah bukan
+  scoring-nya, tapi keputusan bot untuk menradingkan tier terendah.
 
 ---
 
@@ -168,6 +199,19 @@ Dashboard LIVE https://zetryn.lemacore.com.
 **5 winner terbesar:** bulk/sniper +0.294 (19.6×), bulk/sniper +0.144 (19.1×),
 bulk/sniper +0.136 (18.2×), graduation +0.133 (3.0×), graduation +0.099 (4.4×).
 
+**Profitabilitas per ACTION BAND** (join closed_trades→ai_decisions, ts terdekat
+opened_at; lihat P1-5): buy 36 trade **+0.950** SOL 63.9% WR · alert 16 trade
++0.038 SOL 62.5% WR · watch 113 trade **−0.393** SOL 39.8% WR (45W/68L, win
+terbaik hanya +0.043 → tanpa ekor moonshot) · rule-mode/legacy tak-ter-match 70
+trade −0.104 SOL. **Kesimpulan: watch = loss sink murni; buy = mesin profit +
+semua moonshot; scoring/tiering framework directionally SESUAI (band naik → WR
+naik).**
+
+**Distribusi keputusan (ai_decisions, sepanjang dry-run):** skip 10,995
+(conf 0.05) · abort 5,531 (0.0) · watch 3,787 (conf 0.54) · buy 178 (conf 0.89)
+· alert 52 (conf 0.77). Hanya 52 alert & 178 buy seumur hidup → sinyal band
+tinggi langka; volume trade selama ini didominasi watch (yang justru rugi).
+
 ---
 
 ## 7. Fakta & jebakan operasional untuk executor (Fable) — BACA
@@ -204,6 +248,8 @@ bulk/sniper +0.136 (18.2×), graduation +0.133 (3.0×), graduation +0.099 (4.4×
 
 ## 8. Urutan kerja yang disarankan (menuju Sabtu)
 
+0. **P1-5 buang `watch` dari `RISK_BUY_ACTIONS`** — quick win, lakukan DULU
+   (edit `.env`, restart; nol risiko, +0.39 SOL historis).
 1. P0-1 deferred-retry graduation (blocker #1).
 2. P0-2 fix `SOLANA_RPC_URL` + smoke-test 1–2 tx real ≤0.02 SOL.
 3. P0-3 slippage/priority-fee guard.
