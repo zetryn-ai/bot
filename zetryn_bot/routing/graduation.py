@@ -15,6 +15,7 @@ feeds exist (M10c).
 
 from __future__ import annotations
 
+import asyncio
 import time
 
 import aiohttp
@@ -26,6 +27,7 @@ from zetryn_bot.adapters.token_input import to_token_input
 from zetryn_bot.models.token import TokenCandidate
 from zetryn_bot.pipeline.enrich import enrich_candidate
 from zetryn_bot.pipeline.sinks import DecisionSink, LogSink
+from zetryn_bot.routing.gates import graduation_gate
 from zetryn_bot.routing.launch_memory import LaunchMemory
 from zetryn_bot.scanners.protocol import TokenEnricher
 
@@ -67,6 +69,8 @@ class GraduationPipeline:
         config: GraduationConfig | None = None,
         launch_memory: LaunchMemory,
         route_label: str = "graduation",
+        confirm_delay_s: float = 20.0,
+        min_liquidity_usd: float = 2000.0,
     ) -> None:
         self.agent = agent
         self.enrichers = enrichers or []
@@ -74,9 +78,30 @@ class GraduationPipeline:
         self.config = config or GraduationConfig()
         self._launch_memory = launch_memory
         self._route_label = route_label
+        # Wait-and-confirm (rework): after migration, wait this long BEFORE
+        # enriching+deciding so the initial sniper dump reveals itself (and
+        # Jupiter has time to index). Then graduation_gate skips anything that
+        # dropped / has thin liquidity / is being sold into.
+        self._confirm_delay_s = confirm_delay_s
+        self._min_liquidity_usd = min_liquidity_usd
+
+    async def _skip(self, enriched: TokenCandidate, reason: str) -> Decision:
+        decision = Decision(action="skip", confidence=0.0, reasons=[reason])
+        decision.meta["route"] = self._route_label
+        await self.sink.emit(enriched, decision)
+        return decision
 
     async def process(self, candidate: TokenCandidate, session: aiohttp.ClientSession) -> Decision:
+        # Confirmation window: let the post-migration dump play out before we
+        # commit any capital. Enrichment AFTER the wait sees the settled state.
+        if self._confirm_delay_s > 0:
+            await asyncio.sleep(self._confirm_delay_s)
         enriched = await enrich_candidate(candidate, self.enrichers, session)
+
+        # Anti-dump entry guard on the post-confirmation snapshot.
+        ok, why = graduation_gate(enriched, min_liquidity_usd=self._min_liquidity_usd)
+        if not ok:
+            return await self._skip(enriched, f"graduation guard: {why}")
 
         try:
             context = GraduationContext(

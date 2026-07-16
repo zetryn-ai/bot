@@ -408,6 +408,8 @@ async def build_orchestrator(settings: Settings) -> Orchestrator:
                 max_pair_age_seconds=3600.0,
             ),
             launch_memory=launch_memory,
+            confirm_delay_s=settings.graduation_confirm_delay_s,
+            min_liquidity_usd=settings.graduation_min_liquidity_usd,
         )
         # launch/momentum/social share the generalist LLM agent — what makes
         # each a STRATEGY is its entry gate, its ScannerConfig, and its

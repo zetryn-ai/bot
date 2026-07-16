@@ -65,6 +65,26 @@ def launch_gate(candidate: TokenCandidate, *, max_age_s: float) -> tuple[bool, s
     return True, ""
 
 
+def graduation_gate(candidate: TokenCandidate, *, min_liquidity_usd: float) -> tuple[bool, str]:
+    """Don't buy INTO a post-migration dump ("Zetryn Focus" rework 2026-07-17).
+
+    Right after a pump.fun token migrates to a DEX, snipers dump into the fresh
+    liquidity — buying then caught a falling knife (07-16: graduation 0% WR,
+    -1.03 SOL, fills at -95%). Evaluated AFTER a confirmation delay (see
+    ``GraduationPipeline``) so the dump has revealed itself in the data. Enter
+    only a graduated token that is NOT dropping and has real liquidity. When a
+    signal is unknown (0), pass — the delay + tiny liquidity-capped size are the
+    backstop, not a false-negative gate.
+    """
+    if candidate.liquidity_usd and candidate.liquidity_usd < min_liquidity_usd:
+        return False, f"liquidity ${candidate.liquidity_usd:,.0f} < ${min_liquidity_usd:,.0f}"
+    if candidate.price_change_5m_pct < 0:
+        return False, f"post-migration dump (Δ5m {candidate.price_change_5m_pct:+.1f}%)"
+    if candidate.buys_5m and candidate.sells_5m > candidate.buys_5m:
+        return False, f"sell pressure ({candidate.sells_5m} sells vs {candidate.buys_5m} buys 5m)"
+    return True, ""
+
+
 def social_gate(candidate: TokenCandidate, *, max_age_s: float) -> tuple[bool, str]:
     """A call on a token that is already old is exit liquidity, not alpha."""
     if candidate.age_seconds and candidate.age_seconds > max_age_s:
@@ -75,6 +95,7 @@ def social_gate(candidate: TokenCandidate, *, max_age_s: float) -> tuple[bool, s
 __all__ = [
     "LAUNCH_SOURCES",
     "MOMENTUM_SOURCES",
+    "graduation_gate",
     "is_social_source",
     "launch_gate",
     "momentum_gate",

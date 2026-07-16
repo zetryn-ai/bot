@@ -4,6 +4,7 @@ from zetryn_bot.models.token import TokenCandidate
 from zetryn_bot.routing.gates import (
     LAUNCH_SOURCES,
     MOMENTUM_SOURCES,
+    graduation_gate,
     is_social_source,
     launch_gate,
     momentum_gate,
@@ -78,6 +79,33 @@ def test_momentum_gate_blocks_laggards_and_dumps():
 def test_momentum_gate_passes_through_when_no_data():
     ok, _ = momentum_gate(_c(), max_1h_pct=80, max_6h_pct=150)
     assert ok  # unknown is not proof of lagging — the analyst judges
+
+
+def test_graduation_gate_blocks_dumps_and_thin_liquidity():
+    # Healthy: real liquidity, not dropping, buys ≥ sells → pass.
+    ok, _ = graduation_gate(
+        _c(liquidity_usd=8000, price_change_5m_pct=5.0, buys_5m=10, sells_5m=4),
+        min_liquidity_usd=2000,
+    )
+    assert ok
+    # Dropping post-migration → skip.
+    ok, why = graduation_gate(
+        _c(liquidity_usd=8000, price_change_5m_pct=-30.0), min_liquidity_usd=2000
+    )
+    assert not ok and "dump" in why
+    # Thin liquidity → skip.
+    ok, why = graduation_gate(_c(liquidity_usd=500), min_liquidity_usd=2000)
+    assert not ok and "liquidity" in why
+    # Sell pressure → skip.
+    ok, why = graduation_gate(_c(liquidity_usd=8000, buys_5m=3, sells_5m=9), min_liquidity_usd=2000)
+    assert not ok and "sell" in why
+
+
+def test_graduation_gate_passes_through_when_no_data():
+    # A fresh graduation with no price/flow data yet is not proof of a dump;
+    # the confirm-delay + tiny liquidity-capped size are the backstop.
+    ok, _ = graduation_gate(_c(liquidity_usd=8000), min_liquidity_usd=2000)
+    assert ok
 
 
 def test_launch_and_social_gates_reject_old_tokens():

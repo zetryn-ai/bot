@@ -5,6 +5,39 @@ All notable changes to `zetryn-bot` will be documented in this file.
 The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and
 the project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.14.0] — 2026-07-17
+
+**Strategy rework — "Zetryn Focus".** After live forensics showed the 6-route
+spread was mostly marginal and the graduation route collapsed (0% WR / −1.03
+SOL on 07-16 by buying into post-migration dumps), the decision layer is
+refocused to two sharp routes with protection moved upstream. Design doc:
+`docs/plans/2026-07-17-strategy-rework-focus.md`.
+
+### Changed
+
+- **Two buying routes only.** `momentum` / `social` / `launch` / `other` are
+  PARKED (route conf floor 1.0 → scan + log, never buy). Only `graduation` and
+  `sniper` buy.
+- **Liquidity-aware sizing + hard cap.** Every position (paper included) is
+  capped at `RISK_MAX_SIZE_SOL` (default 0.03) and `RISK_MAX_POOL_PCT` of the
+  pool's USD liquidity (default 1%, best-effort via the SOL price). Removes the
+  "0.09 SOL into a $400 pool" class that let graduation bleed.
+- **Graduation wait-and-confirm + anti-dump guard.** After a migration the
+  pipeline waits `GRADUATION_CONFIRM_DELAY_S` (20s), re-enriches, then
+  `graduation_gate` skips a token that is dropping (Δ5m < 0), being sold into
+  (5m sells > buys), or below `GRADUATION_MIN_LIQUIDITY_USD` (2000). The delay
+  also gives Jupiter time to index (no curve fallback — that was the fantom
+  source).
+- **Exit poll cadence 30→8s** — a Jupiter-safe (~38 req/min at 5 positions)
+  speed-up; catastrophic thin-liquidity dumps remain bounded by entry+sizing,
+  not the poll.
+
+### Follow-up (not in this release)
+
+- Emergency rug-exit gate wiring (needs live re-enrichment to add value over
+  the entry guard) and sniper score→outcome calibration (`CalibrationMap`) —
+  tracked for a later patch before go-live.
+
 ## [0.13.1] — 2026-07-15
 
 ### Fixed

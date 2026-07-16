@@ -1,7 +1,7 @@
 # Strategy Rework — "Zetryn Focus"
 
 **Date:** 2026-07-17
-**Status:** Approved
+**Status:** Shipped (v0.14.0) — core C1–C3 + C4a; C4b rug-gate + C5 calibration follow-up
 **Scope:** Decision/strategy layer only. Infra (scanners, enrichers, paper
 execution, DB, dashboard, deploy) unchanged — it is proven-healthy. Trade
 history is PRESERVED (evidence). Bot paper service is currently STOPPED on

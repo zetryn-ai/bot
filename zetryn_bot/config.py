@@ -193,6 +193,12 @@ class Settings(BaseSettings):
     social_max_age_s: float = 21600.0  # a call on a >6h-old token is exit liquidity
     launch_gate_min_liquidity_usd: float = 2000.0  # young pools: lower floor than global
     launch_gate_min_holders: int = 0  # a 20-minute-old pool legitimately has few holders
+    # Graduation wait-and-confirm ("Zetryn Focus" rework 2026-07-17): after a
+    # pump.fun migration, wait this long before enriching+deciding so the
+    # post-migration sniper dump reveals itself; then graduation_gate skips any
+    # token that dropped / is being sold into / has liquidity below the floor.
+    graduation_confirm_delay_s: float = 20.0
+    graduation_min_liquidity_usd: float = 2000.0
     mom_max_1h_pct: float = 80.0  # anti-laggard: Δ1h beyond this = already ran
     mom_max_6h_pct: float = 150.0
     # Per-route TP ladder overrides: "route=rung:frac|rung:frac;route=..."
@@ -252,7 +258,13 @@ class Settings(BaseSettings):
     exit_tp_pct: float = 0.30  # take profit at +30%
     exit_sl_pct: float = 0.15  # stop loss at -15%
     exit_max_hold_s: float = 1800.0  # force-close after 30 min
-    exec_poll_interval_s: float = 5.0  # position monitor poll cadence
+    # Position monitor poll cadence. Every sweep quotes EVERY open position via
+    # Jupiter (free tier ~60 req/min sliding window), so the floor is
+    # (max_positions x 60 / interval) < 60. "Zetryn Focus" rework: 30->8s — a
+    # real but Jupiter-SAFE speed-up (5 positions x 60/8 ~ 38 req/min). Faster
+    # would 429 and blind the monitor; and thin-liquidity catastrophic dumps
+    # can't be escaped at any cadence anyway (bounded by entry guard + sizing).
+    exec_poll_interval_s: float = 8.0
 
     # ── Exit intelligence (M10 — framework lifecycle agent) ─────────────────
     # Off by default: exits stay static TP/SL/max-hold. On, the framework's
