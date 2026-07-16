@@ -38,3 +38,13 @@ async def sol_usd() -> float:
     except Exception as exc:
         log.debug("SOL price fetch failed: {}", exc)
     return _cache["price"]
+
+
+def cached_sol_usd() -> float:
+    """Last known SOL price WITHOUT awaiting a fetch (0.0 if never fetched).
+
+    Sync accessor for hot-path callers (e.g. the RiskManager's pool-aware
+    sizing) that must not await. A background refresher keeps the cache warm;
+    callers treat 0.0 as "price unknown" and degrade gracefully.
+    """
+    return _cache["price"]

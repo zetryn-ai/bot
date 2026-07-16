@@ -39,6 +39,14 @@ class RiskConfig:
     # confidence — a last-resort guard against a misconfigured base size or
     # confidence when real funds are on the line. None = no extra cap (paper).
     max_trade_sol: float | None = None
+    # Liquidity-aware sizing (2026-07-17 rework). A HARD SOL cap applied to
+    # EVERY route (paper included) — bounds the "0.09 SOL into a $400 pool"
+    # class that let graduation bleed -2.2 SOL. `max_pool_pct` additionally
+    # caps a position at a fraction of the pool's USD liquidity so a fill can't
+    # dominate a thin pool (slippage bound); best-effort — skipped when the SOL
+    # price is unknown. 0 disables a cap.
+    max_size_sol: float = 0.03
+    max_pool_pct: float = 0.01
     # Enricher names that MUST appear in candidate.sources before a buy.
     # Enrichers fail open (a rate-limited RugCheck leaves the candidate with
     # default "safe" contract flags), so this is the buy-side backstop: never
@@ -208,6 +216,17 @@ class RiskManager:
         size *= self._cfg.route_size_multipliers.get(route, 1.0)
         if self._cfg.max_trade_sol is not None:
             size = min(size, self._cfg.max_trade_sol)
+        # Liquidity-aware sizing (rework): hard SOL cap always; pool-% cap when
+        # the SOL price is known (thin pool → tiny position, slippage bound).
+        if self._cfg.max_size_sol:
+            size = min(size, self._cfg.max_size_sol)
+        if self._cfg.max_pool_pct and candidate.liquidity_usd > 0:
+            from zetryn_bot.api.solprice import cached_sol_usd
+
+            sol_usd = cached_sol_usd()
+            if sol_usd > 0:
+                pool_cap_sol = candidate.liquidity_usd * self._cfg.max_pool_pct / sol_usd
+                size = min(size, pool_cap_sol)
         size = round(size, 4)
         from zetryn_bot.notify.format import build_trade_meta
 

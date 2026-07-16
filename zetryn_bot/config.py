@@ -130,6 +130,12 @@ class Settings(BaseSettings):
     paper_start_balance_sol: float = 0.0
     risk_min_confidence: float = 0.6  # only alerts at/above this confidence buy
     risk_max_positions: int = 5  # max concurrent open positions
+    # Liquidity-aware sizing (2026-07-17 "Zetryn Focus" rework). HARD SOL cap on
+    # every position (paper included) — the primary bound on per-trade damage.
+    # Pool-% cap keeps a fill ≤ this fraction of the pool's USD liquidity
+    # (slippage bound; best-effort, needs the SOL price). 0 disables either.
+    risk_max_size_sol: float = 0.03
+    risk_max_pool_pct: float = 0.01
     # Decision actions that trigger a buy (CSV). Default alert-only (live-safe);
     # set to "alert,watch" to paper-trade the watchlist (the analyst rarely
     # emits alert on fresh memecoins, so alert-only can sit idle for a long time).
@@ -172,7 +178,12 @@ class Settings(BaseSettings):
     routing_enabled: bool = False
     sniper_max_age_s: float = 120.0  # pumpfun_ws launches older than this fall to launch
     route_size_multipliers: str = "sniper:0.5,launch:0.5,graduation:1.0"
-    route_conf_floors: str = "sniper:0.6,graduation:0.6,other:0.9"
+    # "Zetryn Focus" rework: only graduation + sniper BUY. momentum/social/
+    # launch/other are PARKED at floor 1.0 (never satisfiable → scan + log,
+    # never buy) until each earns its place back with data.
+    route_conf_floors: str = (
+        "sniper:0.6,graduation:0.6,momentum:1.0,social:1.0,launch:1.0,other:1.0"
+    )
 
     # ── M12 strategy-first routing (the "scanner" catch-all is dissolved) ───
     # momentum = trending sources gated anti-laggard; launch = young pools;

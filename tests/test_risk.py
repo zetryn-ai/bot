@@ -17,7 +17,14 @@ def _cand() -> TokenCandidate:
 
 def _rm(**over) -> RiskManager:
     cfg = RiskConfig(
-        base_size_sol=0.2, min_confidence=0.6, max_positions=3, daily_loss_limit_sol=1.0
+        base_size_sol=0.2,
+        min_confidence=0.6,
+        max_positions=3,
+        daily_loss_limit_sol=1.0,
+        # Disable liquidity-aware caps by default so pre-existing tests exercise
+        # base x confidence / route / max_trade logic; cap tests set them.
+        max_size_sol=0.0,
+        max_pool_pct=0.0,
     )
     for k, v in over.items():
         setattr(cfg, k, v)
@@ -44,9 +51,40 @@ def test_low_confidence_is_rejected():
 
 
 def test_size_is_base_times_confidence():
-    req = _rm().evaluate(_cand(), _decision(confidence=0.75), 0)
+    # Disable the liquidity-aware caps to test the base x confidence core.
+    req = _rm(max_size_sol=0.0, max_pool_pct=0.0).evaluate(_cand(), _decision(confidence=0.75), 0)
     assert req is not None
     assert req.size_sol == round(0.2 * 0.75, 4)
+
+
+def test_hard_size_cap_binds():
+    # base 0.2 x conf 0.8 = 0.16, capped to 0.03.
+    req = _rm(max_size_sol=0.03, max_pool_pct=0.0).evaluate(_cand(), _decision(confidence=0.8), 0)
+    assert req is not None
+    assert req.size_sol == 0.03
+
+
+def test_pool_pct_cap_binds_on_thin_pool(monkeypatch):
+    # $400 pool x 1% = $4; at $80/SOL that's 0.05 SOL — but the thin-pool cap
+    # only binds when it's below the SOL cap. Use a generous SOL cap to isolate.
+    import zetryn_bot.api.solprice as sp
+
+    monkeypatch.setattr(sp, "cached_sol_usd", lambda: 80.0)
+    cand = TokenCandidate(address="MintA", symbol="AAA", liquidity_usd=400.0)
+    req = _rm(max_size_sol=1.0, max_pool_pct=0.01).evaluate(cand, _decision(confidence=0.8), 0)
+    assert req is not None
+    assert req.size_sol == round(400.0 * 0.01 / 80.0, 4)  # 0.05
+
+
+def test_pool_pct_cap_skipped_when_price_unknown(monkeypatch):
+    import zetryn_bot.api.solprice as sp
+
+    monkeypatch.setattr(sp, "cached_sol_usd", lambda: 0.0)  # unknown
+    cand = TokenCandidate(address="MintA", symbol="AAA", liquidity_usd=400.0)
+    # falls back to hard SOL cap only
+    req = _rm(max_size_sol=0.03, max_pool_pct=0.01).evaluate(cand, _decision(confidence=0.8), 0)
+    assert req is not None
+    assert req.size_sol == 0.03
 
 
 def test_max_positions_blocks():
@@ -144,7 +182,9 @@ def _routed_decision(route: str, conf: float = 0.9) -> Decision:
 
 
 def test_route_size_multiplier_scales_position():
-    rm = RiskManager(RiskConfig(base_size_sol=0.1, route_size_multipliers={"sniper": 0.5}))
+    rm = RiskManager(
+        RiskConfig(base_size_sol=0.1, route_size_multipliers={"sniper": 0.5}, max_size_sol=0.0)
+    )
     cand = TokenCandidate(address="MintA", symbol="AAA", sources=["pumpfun_ws"])
     req = rm.evaluate(cand, _routed_decision("sniper", conf=0.8), open_count=0)
     assert req is not None
@@ -152,7 +192,9 @@ def test_route_size_multiplier_scales_position():
 
 
 def test_unknown_route_multiplier_defaults_to_one():
-    rm = RiskManager(RiskConfig(base_size_sol=0.1, route_size_multipliers={"sniper": 0.5}))
+    rm = RiskManager(
+        RiskConfig(base_size_sol=0.1, route_size_multipliers={"sniper": 0.5}, max_size_sol=0.0)
+    )
     cand = TokenCandidate(address="MintA", symbol="AAA", sources=["dexscreener"])
     req = rm.evaluate(cand, Decision(action="alert", confidence=0.8), open_count=0)
     assert req is not None

@@ -217,6 +217,9 @@ async def build_orchestrator(settings: Settings) -> Orchestrator:
                 max_hold_s=settings.exit_max_hold_s,
                 # Only cap live trades — paper mode has no real funds to protect.
                 max_trade_sol=settings.wallet_max_trade_sol if is_live else None,
+                # Liquidity-aware sizing (rework) — applies to paper too.
+                max_size_sol=settings.risk_max_size_sol,
+                max_pool_pct=settings.risk_max_pool_pct,
             ),
             repo=risk_repo,
             notifier=notifier,
@@ -310,6 +313,18 @@ async def build_orchestrator(settings: Settings) -> Orchestrator:
         sinks.append(ExecutionSink(risk, executor, tracker, notifier=notifier, activity=activity))
         sink = TeeSink(sinks)
         background_tasks.append(("execution.monitor", tracker.monitor_loop))
+
+        # Keep the SOL/USD cache warm in the bot process so the RiskManager's
+        # pool-aware sizing (liquidity-% cap) has a live rate. Display-grade,
+        # 60s cadence; failures degrade to the hard SOL cap only.
+        async def _refresh_sol_price() -> None:
+            from zetryn_bot.api.solprice import sol_usd
+
+            while True:
+                await sol_usd()
+                await asyncio.sleep(60)
+
+        background_tasks.append(("execution.solprice", _refresh_sol_price))
 
     if settings.notify_enabled:
         from zetryn_bot.notify.heartbeat import heartbeat_loop
