@@ -26,3 +26,4 @@ For roadmap progress and milestone status, see
 | 2026-07-12 | [M10c — Event-driven entry agents (KOL copy-trade)](2026-07-12-m10c-event-driven-agents.md) | Approved |
 | 2026-07-13 | [M12 — Strategy-first routing](2026-07-13-m12-strategy-routing.md) | Shipped (v0.12.0) |
 | 2026-07-15 | [Pre-go-live worklist (blocker + gap sebelum Sabtu)](2026-07-15-pre-golive-worklist.md) | Approved |
+| 2026-07-17 | [Strategy Rework — "Zetryn Focus" (2 route: graduation + sniper)](2026-07-17-strategy-rework-focus.md) | Approved |
